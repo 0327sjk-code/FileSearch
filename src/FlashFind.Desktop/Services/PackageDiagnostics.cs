@@ -34,6 +34,9 @@ internal static class PackageDiagnostics
         try
         {
             var window = new MainWindow(model);
+            IReadOnlyDictionary<string, bool> placeholderChecks = await InputDiagnostics.VerifyAsync(window);
+            if (window.Icon is not BitmapFrame icon || icon.Decoder?.Frames.Count != 10)
+                throw new InvalidOperationException("程序窗口的多分辨率图标加载失败。");
             model.Query = "水面"; await model.SearchNowAsync();
             await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             if (model.Results.Count != 3) throw new InvalidOperationException("发布包检索自检失败。");
@@ -46,6 +49,7 @@ internal static class PackageDiagnostics
             if (gateway.Locations != 1) throw new InvalidOperationException("发布包定位命令自检失败。");
             object result = new { Passed = true, AppName = window.Title, FilesIndexed = index.Snapshot.Length,
                 DefaultInternalDrives = DriveDiscovery.InternalDrives(), Categories = model.Categories.Select(x => x.Title),
+                PlaceholderChecks = placeholderChecks, WindowIconFrames = icon.Decoder.Frames.Select(x => x.PixelWidth),
                 LocateDispatches = gateway.Locations, ForegroundWindowsOpened = 0, ExplorerInvoked = false };
             File.WriteAllText(Path.Combine(output, "package-verification.json"), JsonSerializer.Serialize(result,
                 new JsonSerializerOptions { WriteIndented = true }));

@@ -5,6 +5,7 @@
     <AssemblyName>文件搜索</AssemblyName>
     <RootNamespace>FlashFind.Desktop</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\FileSearch.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -14,5 +15,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FlashFind.Core\FlashFind.Core.csproj" />
+    <Resource Include="Assets\FileSearch.ico" />
+    <Resource Include="Assets\FileSearch.png" />
   </ItemGroup>
 </Project>
