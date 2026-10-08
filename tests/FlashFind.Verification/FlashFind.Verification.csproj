@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><UseWPF>true</UseWPF><RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained></PropertyGroup>
+ <ItemGroup>
+  <ProjectReference Include="..\..\src\FlashFind.Core\FlashFind.Core.csproj" />
+  <ProjectReference Include="..\..\src\FlashFind.Desktop\FlashFind.Desktop.csproj" />
+ </ItemGroup>
+</Project>

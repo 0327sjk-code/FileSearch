@@ -1,0 +1,166 @@
+<!-- 文件用途：搜索主界面、虚拟结果表格和硬盘设置侧栏。 -->
+<Window x:Class="FlashFind.Desktop.Views.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:services="clr-namespace:FlashFind.Desktop.Services"
+ Title="文件搜索" Width="1140" Height="780" MinWidth="840" MinHeight="540"
+ FontFamily="{StaticResource InterfaceFont}" FontSize="13" Foreground="{StaticResource Ink}" Background="{StaticResource Background}"
+ WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True"
+ PreviewKeyDown="WindowKeyDown">
+ <Grid x:Name="RootLayout" Background="{StaticResource Background}">
+  <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+  <StackPanel Margin="28,23,28,0">
+   <Grid Margin="0,0,0,24">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+     <Border Width="36" Height="36" Background="{StaticResource Surface}" CornerRadius="9" Margin="0,0,12,0">
+      <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Ink}" FontSize="19" VerticalAlignment="Center" HorizontalAlignment="Center" />
+     </Border>
+     <TextBlock Text="文件搜索" FontSize="23" FontWeight="SemiBold" VerticalAlignment="Center" />
+    </StackPanel>
+    <Button x:Name="SettingsButton" Grid.Column="1" Command="{Binding SettingsCommand}" ToolTip="选择默认搜索的内置硬盘" AutomationProperties.Name="硬盘设置">
+     <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0" VerticalAlignment="Center" /><TextBlock Text="硬盘设置" /></StackPanel>
+    </Button>
+   </Grid>
+   <Border x:Name="SearchBorder" CornerRadius="10" BorderThickness="1" Background="{StaticResource Background}" Padding="18,13">
+    <Border.Style><Style TargetType="Border"><Setter Property="BorderBrush" Value="{StaticResource Line}" /><Style.Triggers>
+     <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Primary}" /></Trigger>
+    </Style.Triggers></Style></Border.Style>
+    <Grid>
+     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+     <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="21" Foreground="{StaticResource Primary}" VerticalAlignment="Center" Margin="0,0,14,0" />
+     <Grid Grid.Column="1">
+      <TextBlock Text="输入文件名，搜索全部已选硬盘" Foreground="{StaticResource Muted}" FontSize="17" IsHitTestVisible="False" VerticalAlignment="Center">
+       <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding Query}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+      </TextBlock>
+      <TextBox x:Name="SearchInput" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0" Background="Transparent" FontSize="17" Padding="0,3" VerticalContentAlignment="Center" MaxLength="512" AutomationProperties.Name="搜索文件名" />
+     </Grid>
+     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+      <Button Command="{Binding ClearCommand}" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" Style="{StaticResource QuietButton}" ToolTip="清空搜索" Padding="8,4" AutomationProperties.Name="清空搜索" />
+      <Border Background="{StaticResource Surface}" CornerRadius="4" Padding="7,4" Margin="8,0,0,0"><TextBlock Text="Ctrl K" FontSize="11" Foreground="{StaticResource Muted}" /></Border>
+     </StackPanel>
+    </Grid>
+   </Border>
+   <Grid Margin="0,16,0,15">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="170" /></Grid.ColumnDefinitions>
+    <ListBox ItemsSource="{Binding Categories}" SelectedItem="{Binding Category}" BorderThickness="0" Background="Transparent" ItemContainerStyle="{StaticResource FilterTab}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled" AutomationProperties.Name="文件类型筛选">
+     <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
+     <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Title}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" /></DataTemplate></ListBox.ItemTemplate>
+    </ListBox>
+    <ComboBox x:Name="DriveDropdown" Grid.Column="1" ItemsSource="{Binding DriveFilters}" SelectedItem="{Binding Drive}" DisplayMemberPath="Title" Height="36" VerticalAlignment="Top" AutomationProperties.Name="当前磁盘筛选" />
+   </Grid>
+  </StackPanel>
+  <Grid Grid.Row="1" Margin="28,0,28,0">
+   <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+   <DockPanel Margin="0,0,0,12">
+    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right"><TextBlock Text="{Binding Timing}" Foreground="{StaticResource Primary}" VerticalAlignment="Center" /><TextBlock Text="  ·  文件名匹配" Foreground="{StaticResource Muted}" VerticalAlignment="Center" /></StackPanel>
+    <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" VerticalAlignment="Center" />
+   </DockPanel>
+   <Border Grid.Row="1" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" ClipToBounds="True">
+    <Grid>
+     <DataGrid x:Name="ResultsGrid" ItemsSource="{Binding Results}" SelectedItem="{Binding Selected}" AutoGenerateColumns="False"
+      IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False" CanUserReorderColumns="False"
+      HeadersVisibility="Column" GridLinesVisibility="None" BorderThickness="0" Background="{StaticResource Background}"
+      SelectionUnit="FullRow" SelectionMode="Single" RowHeight="62" EnableRowVirtualization="True" EnableColumnVirtualization="False" CanUserResizeColumns="False"
+      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+      ScrollViewer.CanContentScroll="True" MouseDoubleClick="ResultsDoubleClick" AutomationProperties.Name="文件搜索结果">
+      <DataGrid.Columns>
+       <DataGridTemplateColumn Header="文件名 / 所在位置" Width="*" MinWidth="270">
+        <DataGridTemplateColumn.CellTemplate><DataTemplate>
+         <Grid Margin="17,8,12,8" ToolTip="{Binding FullPath}">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="42" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+          <Border Width="32" Height="36" CornerRadius="5" Background="Transparent" VerticalAlignment="Center">
+           <Path Data="M 4,1 L 13,1 L 19,7 L 19,23 L 4,23 Z M 13,1 L 13,7 L 19,7" Width="17" Height="21" Stretch="Uniform" Stroke="{StaticResource Muted}" StrokeThickness="1.2" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+           <TextBlock Text="{Binding Name}" FontWeight="Medium" FontSize="13" TextTrimming="CharacterEllipsis" />
+           <TextBlock Text="{Binding Path}" Foreground="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+          </StackPanel>
+         </Grid>
+        </DataTemplate></DataGridTemplateColumn.CellTemplate>
+       </DataGridTemplateColumn>
+       <DataGridTemplateColumn Header="类型" Width="92">
+        <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding Category}" Margin="18,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+       </DataGridTemplateColumn>
+       <DataGridTemplateColumn Header="硬盘" Width="66">
+        <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding Drive}" Margin="18,0,0,0" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+       </DataGridTemplateColumn>
+       <DataGridTemplateColumn x:Name="ModifiedColumn" Header="修改日期" Width="110">
+        <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding Modified}" Margin="18,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}" FontSize="12" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+       </DataGridTemplateColumn>
+       <DataGridTemplateColumn Header="定位" Width="72">
+        <DataGridTemplateColumn.CellTemplate><DataTemplate>
+         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,8,0">
+          <Button Style="{StaticResource LocateButton}" Command="{Binding DataContext.LocateCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" ToolTip="打开文件夹并选中此文件" AutomationProperties.Name="定位文件" Padding="8">
+           <Path Data="M 2,5 L 9,5 L 11,8 L 22,8 L 22,21 L 2,21 Z" Width="19" Height="17" Stretch="Uniform" Stroke="{StaticResource Ink}" StrokeThickness="1.35" StrokeLineJoin="Round" />
+          </Button>
+         </StackPanel>
+        </DataTemplate></DataGridTemplateColumn.CellTemplate>
+       </DataGridTemplateColumn>
+      </DataGrid.Columns>
+      <DataGrid.ContextMenu><ContextMenu>
+       <MenuItem Header="打开文件" Click="ContextOpen" /><MenuItem Header="打开文件夹并定位" Click="ContextLocate" /><Separator /><MenuItem Header="复制完整路径" Click="ContextCopy" />
+      </ContextMenu></DataGrid.ContextMenu>
+     </DataGrid>
+     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding Empty, Converter={StaticResource BoolVisibility}}" Margin="40">
+      <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="34" Foreground="{StaticResource Primary}" HorizontalAlignment="Center" Margin="0,0,0,18" />
+      <TextBlock Text="{Binding EmptyTitle}" FontSize="19" FontWeight="Medium" HorizontalAlignment="Center" />
+      <TextBlock Text="{Binding EmptyDetail}" Foreground="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="380" />
+     </StackPanel>
+    </Grid>
+   </Border>
+  </Grid>
+  <Border Grid.Row="2" Margin="0,16,0,0" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
+   <Grid Margin="28,11,28,13">
+    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+    <TextBlock Text="{Binding SelectionText}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource Muted}" ToolTip="{Binding SelectionText}" Margin="0,0,20,9" />
+    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,9"><TextBlock Text="{Binding Scope}" FontSize="11" Foreground="{StaticResource Muted}" /><TextBlock Text="  ·  仅本机" FontSize="11" Foreground="{StaticResource Muted}" /></StackPanel>
+    <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center">
+     <Ellipse Width="6" Height="6" Fill="{StaticResource Primary}" Margin="0,0,8,0" />
+     <TextBlock Text="{Binding Status}" Foreground="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="550" />
+     <Button Command="{Binding RescanCommand}" Content="重新扫描" Style="{StaticResource QuietButton}" Padding="8,0" MinHeight="20" FontSize="11" Margin="8,0,0,0" />
+    </StackPanel>
+    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding IndexCount}" Foreground="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" />
+   </Grid>
+  </Border>
+  <Border Grid.RowSpan="3" Panel.ZIndex="1" Background="{StaticResource Ink}" Opacity="0.12" Visibility="{Binding SettingsOpen, Converter={StaticResource BoolVisibility}}" MouseDown="BackdropMouseDown" />
+  <Border x:Name="SettingsPanel" Grid.RowSpan="3" Panel.ZIndex="2" Width="370" HorizontalAlignment="Right" Background="{StaticResource Background}" BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0" Padding="26"
+   Visibility="{Binding SettingsOpen, Converter={StaticResource BoolVisibility}}">
+   <Border.RenderTransform><TranslateTransform /></Border.RenderTransform>
+   <Border.Style><Style TargetType="Border"><Style.Triggers><DataTrigger Binding="{Binding SettingsOpen}" Value="True">
+    <DataTrigger.EnterActions><BeginStoryboard><Storyboard>
+     <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" From="28" To="0" Duration="{services:MotionDuration}"><DoubleAnimation.EasingFunction><QuarticEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction></DoubleAnimation>
+     <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.6" To="1" Duration="{services:MotionDuration}" />
+    </Storyboard></BeginStoryboard></DataTrigger.EnterActions>
+   </DataTrigger></Style.Triggers></Style></Border.Style>
+   <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+    <DockPanel><Button DockPanel.Dock="Right" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" Style="{StaticResource QuietButton}" Command="{Binding CloseSettingsCommand}" Padding="8,4" ToolTip="关闭设置" AutomationProperties.Name="关闭硬盘设置" /><TextBlock Text="硬盘设置" FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" /></DockPanel>
+    <StackPanel Grid.Row="1" Margin="0,20,0,20">
+     <TextBlock Text="选择默认搜索的硬盘" FontWeight="Medium" />
+     <TextBlock Text="保存后立即更新范围，下次启动继续使用。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" />
+     <TextBlock Text="仅列出内置硬盘，排除 NAS、网络盘和移动硬盘。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" />
+    </StackPanel>
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+     <ItemsControl ItemsSource="{Binding DriveChoices}"><ItemsControl.ItemTemplate><DataTemplate>
+      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,17">
+       <CheckBox IsChecked="{Binding Selected}" VerticalContentAlignment="Center" Cursor="Hand" Padding="10,0,0,0">
+        <StackPanel><TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Medium" /><TextBlock Text="{Binding Description}" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0" /></StackPanel>
+       </CheckBox>
+      </Border>
+     </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+    </ScrollViewer>
+    <StackPanel Grid.Row="3" Margin="0,20,0,0">
+     <Button Command="{Binding SelectAllDrivesCommand}" Content="选择全部内置硬盘" Margin="0,0,0,12" />
+     <Button x:Name="SaveSettingsButton" Command="{Binding SaveSettingsCommand}" Content="保存并更新" Style="{StaticResource PrimaryButton}" Padding="14,12" AutomationProperties.Name="保存硬盘设置" />
+     <TextBlock Text="只索引文件名，不读取文件内容。" Foreground="{StaticResource Muted}" FontSize="11" HorizontalAlignment="Center" Margin="0,13,0,0" />
+    </StackPanel>
+   </Grid>
+  </Border>
+  <Border x:Name="ToastPanel" Grid.RowSpan="3" Panel.ZIndex="3" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="20,0,20,94" Background="{StaticResource Ink}" CornerRadius="8" Padding="18,12" MaxWidth="650">
+   <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Visible" /><Style.Triggers><DataTrigger Binding="{Binding Toast}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></Border.Style>
+   <TextBlock Text="{Binding Toast}" Foreground="White" TextWrapping="Wrap" />
+  </Border>
+ </Grid>
+</Window>
