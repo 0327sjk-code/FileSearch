@@ -23,6 +23,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly DispatcherTimer _searchTimer;
     private readonly DispatcherTimer _toastTimer;
     private readonly SearchEngine _engine = new();
+    private readonly Func<IReadOnlyList<IndexedDrive>> _discoverDrives;
     private CancellationTokenSource? _searchCancellation;
     private Task? _startup;
     private AppSettings _settings;
@@ -36,10 +37,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private DriveFilter _drive;
 
     public MainViewModel(IndexService index, IFileActions actions, AppLog log,
-        AppSettings settings, string settingsPath, Dispatcher dispatcher)
+        AppSettings settings, string settingsPath, Dispatcher dispatcher,
+        Func<IReadOnlyList<IndexedDrive>>? discoverDrives = null)
     {
         _index = index; _actions = actions; _log = log; _settings = settings;
         _settingsPath = settingsPath; _dispatcher = dispatcher;
+        _discoverDrives = discoverDrives ?? DriveDiscovery.InternalDrives;
         _category = Categories[0]; _drive = new("全部已选硬盘", null); DriveFilters.Add(_drive);
         _searchTimer = new(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromMilliseconds(SearchDebounceMilliseconds) };
         _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); _ = SearchNowAsync(); };
@@ -76,7 +79,15 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public AppSettings Settings => _settings;
     public string Query { get => _query; set { if (Set(ref _query, value)) ScheduleSearch(); } }
     public CategoryChoice Category { get => _category; set { if (value is not null && Set(ref _category, value)) ScheduleSearch(); } }
-    public DriveFilter Drive { get => _drive; set { if (value is not null && Set(ref _drive, value)) ScheduleSearch(); } }
+    public DriveFilter Drive
+    {
+        get => _drive;
+        set
+        {
+            if (value is null || ReferenceEquals(_drive, value)) return;
+            _drive = value; Raise(); ScheduleSearch();
+        }
+    }
     public ResultList Results { get => _results; private set => Set(ref _results, value); }
     public FileResult? Selected { get => _selected; set { if (Set(ref _selected, value)) Raise(nameof(SelectionText)); } }
     public string SelectionText => Selected?.FullPath ?? "双击打开文件 · Enter 打开 · Alt+Enter 定位 · Ctrl+C 复制路径";
@@ -96,7 +107,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public Task StartAsync()
     {
-        IReadOnlyList<IndexedDrive> available = DriveDiscovery.InternalDrives();
+        IReadOnlyList<IndexedDrive> available = _discoverDrives();
         string[] roots = _settings.UseAllInternalDrives ? available.Select(x => x.Root).ToArray()
             : available.Select(x => x.Root).Where(root => _settings.Roots.Contains(root, StringComparer.OrdinalIgnoreCase)).ToArray();
         UpdateDriveFilters(roots);
@@ -153,7 +164,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     private static int FindPath(IReadOnlyList<FileEntry> entries, string path)
-    { for (int index = 0; index < entries.Count; index++) if (entries[index].FullPath.Equals(path, StringComparison.OrdinalIgnoreCase)) return index; return -1; }
+    {
+        FileIdentity identity = FileIdentity.FromPath(path);
+        for (int index = 0; index < entries.Count; index++)
+            if (FileIdentity.Comparer.Equals(entries[index].Identity, identity)) return index;
+        return -1;
+    }
 
     private bool HasFile(object? parameter) => parameter is FileResult || Selected is not null;
     private void Act(object? parameter, Action<FileEntry> action, string success)
@@ -171,7 +187,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void OpenSettings()
     {
         DriveChoices.Clear();
-        foreach (IndexedDrive drive in DriveDiscovery.InternalDrives())
+        foreach (IndexedDrive drive in _discoverDrives())
             DriveChoices.Add(new(drive, _settings.UseAllInternalDrives || _index.Roots.Contains(drive.Root, StringComparer.OrdinalIgnoreCase)));
         SettingsOpen = true;
     }
@@ -196,9 +212,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void UpdateDriveFilters(string[] roots)
     {
-        DriveFilters.Clear(); DriveFilters.Add(new("全部已选硬盘", null));
+        // 默认选项始终留在列表中，避免重建时 SelectedItem 被清空。
+        while (DriveFilters.Count > 1) DriveFilters.RemoveAt(DriveFilters.Count - 1);
         foreach (string root in roots) DriveFilters.Add(new(root.TrimEnd('\\'), root));
-        Drive = DriveFilters[0]; Scope = roots.Length == 0 ? "没有可用的内置硬盘" : string.Join(" · ", roots.Select(x => x.TrimEnd('\\')));
+        Drive = DriveFilters[0]; Raise(nameof(Drive));
+        Scope = roots.Length == 0 ? "没有可用的内置硬盘" : string.Join(" · ", roots.Select(x => x.TrimEnd('\\')));
     }
 
     public async ValueTask DisposeAsync()

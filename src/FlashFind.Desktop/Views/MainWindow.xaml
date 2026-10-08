@@ -58,7 +58,9 @@
      <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
      <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Title}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" /></DataTemplate></ListBox.ItemTemplate>
     </ListBox>
-    <ComboBox x:Name="DriveDropdown" Grid.Column="1" ItemsSource="{Binding DriveFilters}" SelectedItem="{Binding Drive}" DisplayMemberPath="Title" Height="36" VerticalAlignment="Top" AutomationProperties.Name="当前磁盘筛选" />
+    <ComboBox x:Name="DriveDropdown" Grid.Column="1" ItemsSource="{Binding DriveFilters}" SelectedItem="{Binding Drive}" Height="36" VerticalAlignment="Top" AutomationProperties.Name="当前磁盘筛选">
+     <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" /></DataTemplate></ComboBox.ItemTemplate>
+    </ComboBox>
    </Grid>
   </StackPanel>
   <Grid Grid.Row="1" Margin="28,0,28,0">

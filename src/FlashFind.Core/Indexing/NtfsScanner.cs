@@ -22,7 +22,7 @@ public sealed class NtfsScanner
     private const ulong RootRecordNumber = 5;
 
     public IReadOnlyList<FileEntry> Scan(string root, IReadOnlyList<string> excluded,
-        Action<ScanProgress> progress, CancellationToken cancellation)
+        Action<ScanProgress> progress, CancellationToken cancellation, EntryFactory? factory = null)
     {
         var drive = new DriveInfo(root);
         if (!drive.DriveFormat.Equals("NTFS", StringComparison.OrdinalIgnoreCase) ||
@@ -32,7 +32,7 @@ public sealed class NtfsScanner
             ShareReadWriteDelete, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
         if (handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
         Dictionary<ulong, MftNode> nodes = ReadNodes(handle, root, progress, cancellation);
-        return ResolvePaths(nodes, root, excluded, cancellation);
+        return ResolvePaths(nodes, root, excluded, cancellation, factory);
     }
 
     private static Dictionary<ulong, MftNode> ReadNodes(SafeFileHandle handle, string root,
@@ -93,8 +93,9 @@ public sealed class NtfsScanner
     }
 
     public static IReadOnlyList<FileEntry> ResolvePaths(IReadOnlyDictionary<ulong, MftNode> nodes,
-        string root, IReadOnlyList<string> excluded, CancellationToken cancellation = default)
+        string root, IReadOnlyList<string> excluded, CancellationToken cancellation = default, EntryFactory? factory = null)
     {
+        factory ??= new EntryFactory();
         var paths = new Dictionary<ulong, string>();
         foreach (MftNode node in nodes.Values)
             if ((node.Id & FileReferenceMask) == RootRecordNumber) paths[node.Id] = root;
@@ -105,10 +106,10 @@ public sealed class NtfsScanner
             if ((node.Id & FileReferenceMask) == RootRecordNumber) continue;
             string? parent = ResolveDirectory(node.ParentId, nodes, paths, root);
             if (parent is null || node.Name.Contains('\\') || node.Name.Contains('/')) continue;
-            string path = Path.Combine(parent, node.Name);
-            if (excluded.Any(value => PathRules.IsWithin(path, value))) continue;
+            FileEntry entry = factory.Create(parent, node.Name, node.Directory);
+            if (excluded.Any(value => PathRules.IsWithin(entry, value))) continue;
             if (parent.Equals(root, StringComparison.OrdinalIgnoreCase) && node.Name.StartsWith('$')) continue;
-            result.Add(FileEntry.FromPath(path, node.Directory));
+            result.Add(entry);
         }
         return result;
     }

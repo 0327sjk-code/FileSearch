@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
+using FlashFind.Desktop.Services;
 
 namespace FlashFind.Verification;
 
@@ -15,8 +16,9 @@ internal static class Program
         if (args.FirstOrDefault() == "--benchmark-cache") return LiveIndex.BenchmarkCache(args[1], args[2]);
         string output = args.FirstOrDefault() ?? Path.Combine(Environment.CurrentDirectory, "verification");
         Directory.CreateDirectory(output);
-        var app = new FlashFind.Desktop.App();
-        app.InitializeComponent();
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        app.Resources.MergedDictionaries.Add(new ResourceDictionary
+            { Source = new Uri("/文件搜索;component/Views/Theme.xaml", UriKind.Relative) });
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
         int exit = 0;
         Task run = RunAsync(output);
@@ -35,9 +37,12 @@ internal static class Program
         try
         {
             checks.CoreTests();
+            checks.CompactIndexTests();
             await checks.CacheTestsAsync();
             await checks.IndexAndUiTestsAsync();
+            await checks.StartupUiTestsAsync();
             checks.Benchmark();
+            checks.VerifyNoVisibleWindows();
         }
         finally
         {

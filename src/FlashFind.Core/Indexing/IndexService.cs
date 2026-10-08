@@ -18,14 +18,17 @@ public sealed class IndexService : IAsyncDisposable
     private const int MaximumPendingEvents = 100_000;
     private sealed record FileChange(string Path, string? OldPath, bool Deleted);
 
-    private readonly ConcurrentDictionary<string, FileEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
+    private readonly EntryTable _entries = new();
+    private readonly EntryFactory _factory = new();
     private readonly ConcurrentQueue<FileChange> _changes = new();
     private readonly List<FileSystemWatcher> _watchers = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private readonly object _publishGate = new();
     private readonly CacheStore _cache;
     private readonly AppLog _log;
     private readonly string[] _excluded;
+    private string[] _effectiveExcluded = Array.Empty<string>();
     private readonly bool _preferNtfs;
     private FileEntry[] _snapshot = Array.Empty<FileEntry>();
     private SearchCatalog _catalog = SearchCatalog.Empty;
@@ -104,10 +107,10 @@ public sealed class IndexService : IAsyncDisposable
         try
         {
             foreach (FileSystemWatcher watcher in _watchers) watcher.Dispose();
-            _watchers.Clear(); Roots = normalized;
+            _watchers.Clear(); Roots = normalized; RefreshExclusions();
             while (_changes.TryDequeue(out _)) Interlocked.Decrement(ref _pendingCount);
-            foreach (string path in _entries.Keys)
-                if (!Roots.Any(root => PathRules.IsWithin(path, root))) _entries.TryRemove(path, out _);
+            _entries.RemoveWhere(entry => !Roots.Any(root => PathRules.IsWithin(entry, root)));
+            _factory.Trim(_entries.Snapshot());
             Interlocked.Exchange(ref _dirty, 1);
             Publish(); StartWatchers(); Notify();
         }
@@ -117,13 +120,16 @@ public sealed class IndexService : IAsyncDisposable
 
     private void LoadCache(CancellationToken token)
     {
+        RefreshExclusions();
         try
         {
-            CachedIndex? cached = _cache.Load(token);
+            CachedIndex? cached = _cache.Load(token, _factory);
             if (cached is null) return;
+            _entries.EnsureCapacity(cached.Entries.Count(entry => Roots.Any(root => PathRules.IsWithin(entry, root))));
             foreach (FileEntry entry in cached.Entries)
-                if (Roots.Any(root => PathRules.IsWithin(entry.FullPath, root)) && !IsExcluded(entry.FullPath))
-                    _entries[entry.FullPath] = entry;
+                if (Roots.Any(root => PathRules.IsWithin(entry, root)) && !IsExcluded(entry))
+                    _entries.Upsert(entry);
+            _factory.Trim(_entries.Snapshot());
             _lastSaved = cached.SavedUtc;
             _message = "已载入缓存，正在核对磁盘变化";
             Publish(); Notify();
@@ -138,14 +144,14 @@ public sealed class IndexService : IAsyncDisposable
         { _log.Write($"Root unavailable: {root}"); Interlocked.Increment(ref _skipped); return; }
         string[] excluded = _excluded.Concat(new[]
             { Path.Combine(Path.GetPathRoot(root)!, "$Recycle.Bin"), Path.Combine(Path.GetPathRoot(root)!, "System Volume Information") }).ToArray();
-        HashSet<string>? seen = null;
+        HashSet<FileIdentity>? seen = null;
         if (_preferNtfs)
         {
             try
             {
-                IReadOnlyList<FileEntry> entries = new NtfsScanner().Scan(root, excluded, Report, token);
-                seen = new HashSet<string>(entries.Select(x => x.FullPath), StringComparer.OrdinalIgnoreCase);
-                foreach (FileEntry entry in entries) _entries[entry.FullPath] = entry;
+                IReadOnlyList<FileEntry> entries = new NtfsScanner().Scan(root, excluded, Report, token, _factory);
+                seen = new HashSet<FileIdentity>(FileIdentity.Comparer);
+                foreach (FileEntry entry in entries) seen.Add(_entries.Upsert(entry).Identity);
                 _mode = "NTFS 快速索引";
                 Interlocked.Exchange(ref _dirty, 1);
             }
@@ -155,10 +161,9 @@ public sealed class IndexService : IAsyncDisposable
         if (seen is null)
         {
             seen = new DirectoryScanner().Scan(root, excluded, entry =>
-            { _entries[entry.FullPath] = entry; Interlocked.Exchange(ref _dirty, 1); }, Report, token);
+            { FileEntry stored = _entries.Upsert(entry); Interlocked.Exchange(ref _dirty, 1); return stored; }, Report, token, _factory);
         }
-        foreach (string path in _entries.Keys)
-            if (PathRules.IsWithin(path, root) && !seen.Contains(path)) _entries.TryRemove(path, out _);
+        _entries.RemoveWhere(entry => PathRules.IsWithin(entry, root) && !seen.Contains(entry.Identity));
         Interlocked.Exchange(ref _dirty, 1);
     }
 
@@ -208,9 +213,12 @@ public sealed class IndexService : IAsyncDisposable
         Interlocked.Increment(ref _pendingCount); _changes.Enqueue(change);
     }
 
-    private bool IsExcluded(string path) => _excluded.Any(root => PathRules.IsWithin(path, root)) ||
-        Roots.Any(root => PathRules.IsWithin(path, Path.Combine(Path.GetPathRoot(root)!, "$Recycle.Bin")) ||
-            PathRules.IsWithin(path, Path.Combine(Path.GetPathRoot(root)!, "System Volume Information")));
+    private void RefreshExclusions() => _effectiveExcluded = _excluded.Concat(Roots.SelectMany(root => new[]
+        { Path.Combine(Path.GetPathRoot(root)!, "$Recycle.Bin"), Path.Combine(Path.GetPathRoot(root)!, "System Volume Information") }))
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+    private bool IsExcluded(string path) => _effectiveExcluded.Any(root => PathRules.IsWithin(path, root));
+    private bool IsExcluded(FileEntry entry) => _effectiveExcluded.Any(root => PathRules.IsWithin(entry, root));
 
     private async Task MaintainAsync(CancellationToken token)
     {
@@ -254,16 +262,16 @@ public sealed class IndexService : IAsyncDisposable
                 bool directory = (attributes & FileAttributes.Directory) != 0;
                 if (directory && (attributes & FileAttributes.ReparsePoint) == 0)
                 {
-                    bool known = _entries.ContainsKey(change.Path);
-                    _entries[change.Path] = FileEntry.FromPath(change.Path, true);
+                    bool known = _entries.Contains(change.Path);
+                    _entries.Upsert(_factory.FromPath(change.Path, true));
                     if (!known)
                         await Task.Run(() => new DirectoryScanner().Scan(change.Path, _excluded, entry =>
-                        { _entries[entry.FullPath] = entry; }, _ => { }, token), token).ConfigureAwait(false);
+                        _entries.Upsert(entry), _ => { }, token, _factory), token).ConfigureAwait(false);
                 }
                 else
                 {
                     var info = new FileInfo(change.Path);
-                    _entries[change.Path] = FileEntry.FromPath(change.Path, directory, directory ? -1 : info.Length, info.LastWriteTimeUtc.Ticks);
+                    _entries.Upsert(_factory.FromPath(change.Path, directory, directory ? -1 : info.Length, info.LastWriteTimeUtc.Ticks));
                 }
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -274,33 +282,29 @@ public sealed class IndexService : IAsyncDisposable
 
     private void RenameTree(string oldPath, string newPath)
     {
-        foreach (KeyValuePair<string, FileEntry> pair in _entries)
-        {
-            if (!PathRules.IsWithin(pair.Key, oldPath)) continue;
-            if (!_entries.TryRemove(pair.Key, out FileEntry? entry)) continue;
-            string destination = newPath + pair.Key[oldPath.Length..];
-            _entries[destination] = FileEntry.FromPath(destination, entry.IsDirectory, entry.Length, entry.ModifiedUtcTicks);
-        }
+        _entries.RenameTree(oldPath, newPath, _factory);
         Enqueue(new(newPath, null, false));
     }
 
     private void RemoveTree(string path)
     {
-        if (_entries.TryRemove(path, out FileEntry? removed) && !removed.IsDirectory) return;
-        foreach (string entry in _entries.Keys)
-            if (PathRules.IsWithin(entry, path)) _entries.TryRemove(entry, out _);
+        if (_entries.Remove(path) is { IsDirectory: false }) return;
+        _entries.RemoveWhere(entry => PathRules.IsWithin(entry, path));
     }
 
     private int _dirtyToSave;
     private void Publish(bool fastLookup = false)
     {
-        if (Interlocked.Exchange(ref _dirty, 0) == 0 && Snapshot.Length == _entries.Count &&
-            (!fastLookup || Catalog.HasFastLookup)) return;
-        FileEntry[] entries = _entries.Values.ToArray();
-        var catalog = new SearchCatalog(entries, buildFastLookup: fastLookup || !_scanning);
-        Volatile.Write(ref _catalog, catalog);
-        Volatile.Write(ref _snapshot, entries);
-        Interlocked.Exchange(ref _dirtyToSave, 1);
+        lock (_publishGate)
+        {
+            if (Interlocked.Exchange(ref _dirty, 0) == 0 && Snapshot.Length == _entries.Count &&
+                (!fastLookup || Catalog.HasFastLookup)) return;
+            FileEntry[] entries = _entries.Snapshot();
+            var catalog = new SearchCatalog(entries, buildFastLookup: fastLookup || !_scanning);
+            Volatile.Write(ref _catalog, catalog);
+            Volatile.Write(ref _snapshot, entries);
+            Interlocked.Exchange(ref _dirtyToSave, 1);
+        }
     }
     private void Notify() => Changed?.Invoke(State);
     private async Task SaveAsync(CancellationToken token)

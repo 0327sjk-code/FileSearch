@@ -1,6 +1,7 @@
 // 文件用途：带版本的压缩索引、原子写入和损坏恢复。
 using System.IO.Compression;
 using System.Text;
+using FlashFind.Core.Indexing;
 
 namespace FlashFind.Core.Storage;
 
@@ -14,9 +15,10 @@ public sealed class CacheStore(string path)
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     public string Path { get; } = System.IO.Path.GetFullPath(path);
 
-    public CachedIndex? Load(CancellationToken cancellation = default)
+    public CachedIndex? Load(CancellationToken cancellation = default, EntryFactory? factory = null)
     {
         if (!File.Exists(Path)) return null;
+        factory ??= new EntryFactory();
         using var file = new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.Read);
         using var gzip = new GZipStream(file, CompressionMode.Decompress);
         using var reader = new BinaryReader(gzip, Encoding.UTF8);
@@ -38,7 +40,7 @@ public sealed class CacheStore(string path)
                 throw new InvalidDataException("索引路径异常。");
             bool directory = reader.ReadBoolean();
             long length = reader.ReadInt64(), ticks = reader.ReadInt64();
-            entries[index] = FileEntry.FromPath(fullPath, directory, length, ticks);
+            entries[index] = factory.FromPath(fullPath, directory, length, ticks);
         }
         return new(entries, roots, saved);
     }

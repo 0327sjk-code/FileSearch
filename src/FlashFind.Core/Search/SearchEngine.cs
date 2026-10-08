@@ -10,6 +10,9 @@ public sealed class SearchEngine
 {
     public SearchResponse Search(SearchCatalog catalog, SearchQuery query, CancellationToken cancellation = default)
     {
+        cancellation.ThrowIfCancellationRequested();
+        if (query.Terms.Count == 0 && query.Extensions.Length == 0 && query.Category == FileCategory.All && query.Root is null)
+            return new(catalog.Files, catalog.Files.Count, catalog.Entries.Length, 0);
         return SearchCore(catalog.Candidates(query, cancellation), catalog.Entries.Length, query, cancellation);
     }
     public SearchResponse Search(FileEntry[] entries, SearchQuery query, CancellationToken cancellation = default)
@@ -20,42 +23,53 @@ public sealed class SearchEngine
         cancellation.ThrowIfCancellationRequested();
         var watch = Stopwatch.StartNew();
         // 按名称匹配程度分桶，保留全部命中；避免大集合整体排序。
-        var buckets = new List<FileEntry>[query.Terms.Count * 4 + 1];
+        var buckets = new List<FileEntry>?[query.Terms.Count * 4 + 1];
         int count = 0, index = 0;
         foreach (FileEntry entry in entries)
         {
             if ((index++ & 1023) == 0) cancellation.ThrowIfCancellationRequested();
             if (query.Category == FileCategory.All && entry.IsDirectory) continue;
             if (query.Category != FileCategory.All && entry.Category != query.Category) continue;
-            if (query.Root is not null && !PathRules.IsWithin(entry.FullPath, query.Root)) continue;
-            if (query.Extensions.Length > 0 && !query.Extensions.Contains(entry.Extension, StringComparer.OrdinalIgnoreCase)) continue;
+            if (query.Root is not null && !PathRules.IsWithin(entry, query.Root)) continue;
+            if (query.Extensions.Length > 0 && !HasExtension(entry, query.Extensions)) continue;
             int score = Match(entry, query);
             if (score < 0) continue;
             count++;
             (buckets[score] ??= new List<FileEntry>()).Add(entry);
         }
-        var results = new List<FileEntry>(count);
-        foreach (List<FileEntry>? bucket in buckets)
-            if (bucket is not null) results.AddRange(bucket);
+        var results = new RankedEntries(buckets);
         watch.Stop();
         return new(results, count, indexedCount, watch.Elapsed.TotalMilliseconds);
     }
 
     private static int Match(FileEntry entry, SearchQuery query)
     {
+        if (query.Terms.Count == 0) return 0;
+        // 按候选项临时折叠大小写，保持与名称页一致；不为全量索引常驻另一份名称。
+        string normalizedName = entry.HasUnicodeName ? entry.Name.ToLowerInvariant() : entry.Name;
+        StringComparison comparison = entry.HasUnicodeName ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         int score = 0;
         foreach (QueryTerm term in query.Terms)
         {
-            bool inName = term.Wildcard ? WildcardMatcher.IsMatch(entry.NormalizedName, term.Normalized)
-                : entry.NormalizedName.Contains(term.Normalized, StringComparison.Ordinal);
+            bool inName = term.Wildcard ? WildcardMatcher.IsMatch(normalizedName, term.Normalized)
+                : (!term.RequiresUnicode || entry.HasUnicodeName) && normalizedName.Contains(term.Normalized, comparison);
             bool inPath = !inName && query.IncludePath && (term.Wildcard
                 ? WildcardMatcher.IsMatch(entry.FullPath, term.Text)
                 : entry.FullPath.Contains(term.Text, StringComparison.OrdinalIgnoreCase));
             if (term.Excluded) { if (inName || inPath) return -1; continue; }
             if (!inName && !inPath) return -1;
-            score += !inName ? 4 : entry.NormalizedName.Equals(term.Normalized, StringComparison.Ordinal) ? 0
-                : entry.NormalizedName.StartsWith(term.Normalized, StringComparison.Ordinal) ? 1 : 2;
+            score += !inName ? 4 : normalizedName.Equals(term.Normalized, comparison) ? 0
+                : normalizedName.StartsWith(term.Normalized, comparison) ? 1 : 2;
         }
         return score;
+    }
+
+    private static bool HasExtension(FileEntry entry, string[] extensions)
+    {
+        if (entry.IsDirectory) return false;
+        ReadOnlySpan<char> extension = Path.GetExtension(entry.Name.AsSpan());
+        foreach (string candidate in extensions)
+            if (extension.Equals(candidate, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
     }
 }

@@ -47,10 +47,12 @@ internal static class PackageDiagnostics
             Capture(window, Path.Combine(output, "硬盘设置.png"), 1140, 748);
             model.LocateCommand.Execute(model.Results[0]);
             if (gateway.Locations != 1) throw new InvalidOperationException("发布包定位命令自检失败。");
+            int visibleWindows = BackgroundWindowAudit.VisibleWindowCount();
+            if (visibleWindows != 0) throw new InvalidOperationException("离屏验证意外创建了可见窗口。");
             object result = new { Passed = true, AppName = window.Title, FilesIndexed = index.Snapshot.Length,
                 DefaultInternalDrives = DriveDiscovery.InternalDrives(), Categories = model.Categories.Select(x => x.Title),
                 PlaceholderChecks = placeholderChecks, WindowIconFrames = icon.Decoder.Frames.Select(x => x.PixelWidth),
-                LocateDispatches = gateway.Locations, ForegroundWindowsOpened = 0, ExplorerInvoked = false };
+                LocateDispatches = gateway.Locations, ForegroundWindowsOpened = visibleWindows, ExplorerInvoked = false };
             File.WriteAllText(Path.Combine(output, "package-verification.json"), JsonSerializer.Serialize(result,
                 new JsonSerializerOptions { WriteIndented = true }));
             window.Close();

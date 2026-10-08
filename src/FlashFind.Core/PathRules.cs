@@ -3,6 +3,18 @@ namespace FlashFind.Core;
 
 public static class PathRules
 {
+    public static bool IsWithin(FileEntry entry, string root)
+    {
+        if (IsWithin(entry.ParentPath, root)) return true;
+        string normalized = Path.TrimEndingDirectorySeparator(root);
+        int separatorLength = Path.EndsInDirectorySeparator(entry.ParentPath) ? 0 : 1;
+        int nameOffset = entry.ParentPath.Length + separatorLength;
+        return normalized.Length == nameOffset + entry.Name.Length &&
+            normalized.AsSpan(0, entry.ParentPath.Length).Equals(entry.ParentPath, StringComparison.OrdinalIgnoreCase) &&
+            (separatorLength == 0 || normalized[entry.ParentPath.Length] is '\\' or '/') &&
+            normalized.AsSpan(nameOffset).Equals(entry.Name, StringComparison.OrdinalIgnoreCase);
+    }
+
     public static bool IsWithin(string path, string root)
     {
         string normalized = Path.TrimEndingDirectorySeparator(root);

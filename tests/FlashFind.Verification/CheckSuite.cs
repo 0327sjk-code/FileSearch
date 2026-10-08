@@ -26,6 +26,8 @@ internal sealed partial class CheckSuite(string output)
     private static bool Throws<T>(Action action) where T : Exception
     { try { action(); return false; } catch (T) { return true; } }
 
+    public void VerifyNoVisibleWindows() => Check("验证进程没有创建可见窗口", BackgroundWindowAudit.VisibleWindowCount() == 0);
+
     public void CoreTests()
     {
         var engine = new SearchEngine();

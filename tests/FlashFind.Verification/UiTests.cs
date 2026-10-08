@@ -34,6 +34,11 @@ internal sealed partial class CheckSuite
             new[] { Path.Combine(output, "logs") }, preferNtfs: true);
         await indexService.StartAsync(new[] { fixture });
         Check("真实目录首次索引", indexService.Snapshot.Count(x => !x.IsDirectory) == 2511);
+        FileEntry firstIndexed = indexService.Snapshot.First(entry => entry.Name == "asset_0000.txt");
+        await indexService.RebuildAsync();
+        Check("重复扫描不生成重复文件", indexService.Snapshot.Count(entry => !entry.IsDirectory) == 2511);
+        Check("重复扫描复用未改变的条目", ReferenceEquals(firstIndexed,
+            indexService.Snapshot.First(entry => entry.Name == "asset_0000.txt")));
         string created = Path.Combine(fixture, "新建的文件.txt");
         File.WriteAllText(created, "fixture");
         await UntilAsync(() => indexService.Snapshot.Any(x => x.FullPath == created));

@@ -3,20 +3,33 @@ namespace FlashFind.Core;
 
 public enum FileCategory { All, Folder, Document, Image, Video, Audio, Archive, Code, Other }
 
-public sealed record FileEntry(string FullPath, string Name, string Extension, bool IsDirectory,
-    long Length, long ModifiedUtcTicks)
+public sealed record FileEntry
 {
-    public string ParentPath => Path.GetDirectoryName(FullPath) ?? FullPath;
-    public string Drive => Path.GetPathRoot(FullPath) ?? string.Empty;
-    public FileCategory Category { get; } = FileClassifier.Classify(Extension, IsDirectory);
-    public string NormalizedName { get; } = Name.ToLowerInvariant();
-    public bool HasUnicodeName { get; } = Name.AsSpan().IndexOfAnyExceptInRange('\0', '\u007f') >= 0;
+    // 目录和名称共享；完整路径仅在显示、定位和保存缓存时临时还原。
+    public string ParentPath { get; }
+    public string Name { get; }
+    public string FullPath => Name.Length == 0 ? ParentPath : Path.Combine(ParentPath, Name);
+    public string Drive => Path.GetPathRoot(ParentPath) ?? string.Empty;
+    public string Extension => IsDirectory ? string.Empty : Path.GetExtension(Name).ToLowerInvariant();
+    public bool IsDirectory { get; }
+    public long Length { get; }
+    public long ModifiedUtcTicks { get; }
+    public FileCategory Category { get; }
+    public bool HasUnicodeName { get; }
+    public FileIdentity Identity => new(ParentPath, Name);
+
+    internal FileEntry(string parentPath, string name, bool directory, long length, long ticks)
+    {
+        ParentPath = parentPath; Name = name; IsDirectory = directory; Length = length; ModifiedUtcTicks = ticks;
+        Category = FileClassifier.Classify(directory ? string.Empty : Path.GetExtension(name), directory);
+        HasUnicodeName = name.AsSpan().IndexOfAnyExceptInRange('\0', '\u007f') >= 0;
+    }
 
     public static FileEntry FromPath(string path, bool directory, long length = -1, long ticks = 0)
     {
-        string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
-        return new(path, name, directory ? string.Empty : Path.GetExtension(name).ToLowerInvariant(),
-            directory, length, ticks);
+        path = Path.TrimEndingDirectorySeparator(path);
+        string name = Path.GetFileName(path);
+        return new(Path.GetDirectoryName(path) ?? path, name, directory, length, ticks);
     }
 }
 
@@ -25,7 +38,7 @@ public static class FileClassifier
     private static readonly IReadOnlyDictionary<string, FileCategory> Extensions = CreateExtensions();
 
     public static FileCategory Classify(string extension, bool directory) => directory
-        ? FileCategory.Folder : Extensions.GetValueOrDefault(extension.ToLowerInvariant(), FileCategory.Other);
+        ? FileCategory.Folder : Extensions.GetValueOrDefault(extension, FileCategory.Other);
 
     private static Dictionary<string, FileCategory> CreateExtensions()
     {
