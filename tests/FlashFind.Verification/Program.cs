@@ -14,6 +14,8 @@ internal static class Program
     {
         if (args.FirstOrDefault() == "--index") return LiveIndex.RunAsync(args[1..]).GetAwaiter().GetResult();
         if (args.FirstOrDefault() == "--benchmark-cache") return LiveIndex.BenchmarkCache(args[1], args[2]);
+        if (args.FirstOrDefault() == "--prepare-ready") return StartupBenchmark.PrepareAsync(args[1], args[2]).GetAwaiter().GetResult();
+        if (args.FirstOrDefault() == "--benchmark-startup") return StartupBenchmark.RunAsync(args[1], args[2]).GetAwaiter().GetResult();
         string output = args.FirstOrDefault() ?? Path.Combine(Environment.CurrentDirectory, "verification");
         Directory.CreateDirectory(output);
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -39,6 +41,7 @@ internal static class Program
             checks.CoreTests();
             checks.CompactIndexTests();
             await checks.CacheTestsAsync();
+            await checks.PersistentIndexTestsAsync();
             await checks.IndexAndUiTestsAsync();
             await checks.StartupUiTestsAsync();
             checks.Benchmark();

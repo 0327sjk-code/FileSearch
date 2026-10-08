@@ -9,9 +9,13 @@ public sealed class SearchCatalog
     private readonly NamePage[]? _asciiPages;
     private readonly NamePage[]? _unicodePages;
     public static SearchCatalog Empty { get; } = new(Array.Empty<FileEntry>());
-    public FileEntry[] Entries { get; }
+    internal PersistentCatalog? Persistent { get; }
+    public IReadOnlyList<FileEntry> Entries { get; }
     public IReadOnlyList<FileEntry> Files { get; }
-    public bool HasFastLookup => _asciiPages is not null;
+    public bool HasFastLookup => Persistent is not null || _asciiPages is not null;
+    public bool IsPersistent => Persistent is not null;
+    internal SearchCatalog(PersistentCatalog source)
+    { Persistent = source; Entries = source.Entries; Files = source.Files; _unicodeIndices = Array.Empty<int>(); }
     public SearchCatalog(FileEntry[] entries, bool buildFastLookup = true)
     {
         Entries = entries;
@@ -35,6 +39,7 @@ public sealed class SearchCatalog
     }
     public IEnumerable<FileEntry> Candidates(SearchQuery query, CancellationToken cancellation = default)
     {
+        if (Persistent is not null) return Persistent.Candidates(query, cancellation);
         bool unicode = query.Terms.Any(x => !x.Excluded && x.RequiresUnicode) && !query.IncludePath;
         QueryTerm? seed = query.IncludePath ? null : query.Terms.Where(x => !x.Excluded && !x.Wildcard)
             .MaxBy(x => x.Normalized.Length);
@@ -60,7 +65,7 @@ public sealed class SearchCatalog
         }
     }
 
-    private static IEnumerable<int> Merge(IEnumerable<int> left, IEnumerable<int> right)
+    internal static IEnumerable<int> Merge(IEnumerable<int> left, IEnumerable<int> right)
     {
         using IEnumerator<int> first = left.GetEnumerator(), second = right.GetEnumerator();
         bool hasFirst = first.MoveNext(), hasSecond = second.MoveNext();

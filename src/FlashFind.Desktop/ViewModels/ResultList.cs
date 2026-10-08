@@ -1,11 +1,16 @@
 // 文件用途：全部结果的延迟视图；只为可见行创建展示对象。
 using System.Collections;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using FlashFind.Core;
 
 namespace FlashFind.Desktop.ViewModels;
 
-public sealed class FileResult(FileEntry entry)
+public sealed class FileResult(FileEntry entry, ResultList? owner = null, int sourceIndex = -1, int generation = 0)
 {
+    internal WeakReference<ResultList>? Owner { get; } = owner is null ? null : new(owner);
+    internal int SourceIndex { get; } = sourceIndex;
+    internal int Generation { get; } = generation;
     public FileEntry Entry { get; } = entry;
     public string Name => Entry.Name;
     public string Path => Entry.ParentPath;
@@ -27,11 +32,23 @@ public sealed class FileResult(FileEntry entry)
     }
 }
 
-public sealed class ResultList(IReadOnlyList<FileEntry> entries) : IList
+public sealed class ResultList : IList, INotifyCollectionChanged, INotifyPropertyChanged
 {
     private const int MaximumCachedRows = 4096;
     private readonly Dictionary<int, FileResult> _cache = new();
-    public int Count => entries.Count;
+    private IReadOnlyList<FileEntry> _entries;
+    private int _generation;
+    internal int MaterializedRows { get; private set; }
+    public ResultList(IReadOnlyList<FileEntry> entries) => _entries = entries;
+    public event NotifyCollectionChangedEventHandler? CollectionChanged;
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public int Count => _entries.Count;
+    public void Update(IReadOnlyList<FileEntry> entries)
+    {
+        _entries = entries; _generation++; _cache.Clear(); MaterializedRows = 0;
+        PropertyChanged?.Invoke(this, new(nameof(Count))); PropertyChanged?.Invoke(this, new("Item[]"));
+        CollectionChanged?.Invoke(this, new(NotifyCollectionChangedAction.Reset));
+    }
     public bool IsReadOnly => true;
     public bool IsFixedSize => true;
     public bool IsSynchronized => false;
@@ -42,14 +59,16 @@ public sealed class ResultList(IReadOnlyList<FileEntry> entries) : IList
         {
             if (_cache.TryGetValue(index, out FileResult? result)) return result;
             if (_cache.Count >= MaximumCachedRows) _cache.Clear();
-            return _cache[index] = new(entries[index]);
+            MaterializedRows++;
+            return _cache[index] = new(_entries[index], this, index, _generation);
         }
         set => throw new NotSupportedException();
     }
     public IEnumerator GetEnumerator() { for (int index = 0; index < Count; index++) yield return this[index]; }
-    public int IndexOf(object? value) => value is FileResult result ? IndexOfEntry(result.Entry) : -1;
-    private int IndexOfEntry(FileEntry entry)
-    { for (int index = 0; index < Count; index++) if (ReferenceEquals(entries[index], entry)) return index; return -1; }
+    public int IndexOf(object? value) => value is FileResult result && result.Owner is not null &&
+        result.Owner.TryGetTarget(out ResultList? owner) && ReferenceEquals(owner, this) &&
+        result.Generation == _generation &&
+        (uint)result.SourceIndex < (uint)Count ? result.SourceIndex : -1;
     public bool Contains(object? value) => IndexOf(value) >= 0;
     public void CopyTo(Array array, int index)
     { for (int item = 0; item < Count; item++) array.SetValue(this[item], index + item); }

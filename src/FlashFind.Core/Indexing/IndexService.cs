@@ -34,6 +34,7 @@ public sealed class IndexService : IAsyncDisposable
     private SearchCatalog _catalog = SearchCatalog.Empty;
     private long _lastReportTick;
     private Task? _maintenance;
+    private Task? _initialization;
     private CancellationTokenSource? _activeScan;
     private int _dirty, _rescanning, _pendingCount;
     private volatile bool _scanning;
@@ -41,11 +42,12 @@ public sealed class IndexService : IAsyncDisposable
     private DateTime _lastSaved = DateTime.MinValue, _lastScan = DateTime.MinValue;
     private readonly TaskCompletionSource _cacheReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _started;
+    private volatile bool _mutableReady;
     private string _message = "准备索引", _mode = "目录索引";
     public string[] Roots { get; private set; } = Array.Empty<string>();
     public FileEntry[] Snapshot => Volatile.Read(ref _snapshot);
     public SearchCatalog Catalog => Volatile.Read(ref _catalog);
-    public IndexState State => new(_entries.Count, _scanning, _message, _skipped,
+    public IndexState State => new(_mutableReady ? _entries.Count : Catalog.Entries.Count, _scanning, _message, _skipped,
         _lastSaved == DateTime.MinValue ? null : _lastSaved, _mode);
     public event Action<IndexState>? Changed;
 
@@ -60,18 +62,25 @@ public sealed class IndexService : IAsyncDisposable
         if (_started) throw new InvalidOperationException("索引服务已经启动。");
         _started = true;
         Roots = PathRules.NormalizeRoots(roots);
+        RefreshExclusions(); StartWatchers();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _lifetime.Token);
-        try { await Task.Run(() => LoadCache(linked.Token), linked.Token).ConfigureAwait(false); }
-        finally { _cacheReady.TrySetResult(); }
-        StartWatchers();
-        _maintenance = MaintainAsync(_lifetime.Token);
-        await RebuildAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            _initialization = Task.Run(() => InitializeCache(linked.Token), linked.Token);
+            try { await _initialization.ConfigureAwait(false); }
+            finally { _cacheReady.TrySetResult(); }
+            linked.Token.ThrowIfCancellationRequested();
+            _maintenance = MaintainAsync(_lifetime.Token);
+            await RebuildAsync(linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
     }
 
     public async Task RebuildAsync(CancellationToken cancellation = default)
     {
-        if (!await _scanGate.WaitAsync(0, cancellation).ConfigureAwait(false)) return;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _lifetime.Token);
+        if (_started) await _cacheReady.Task.WaitAsync(linked.Token).ConfigureAwait(false);
+        if (!await _scanGate.WaitAsync(0, linked.Token).ConfigureAwait(false)) return;
         _activeScan = linked;
         _skippedByRoot.Clear();
         _scanning = true; _skipped = 0; _message = "正在扫描磁盘，可继续搜索已有结果"; Notify();
@@ -100,10 +109,11 @@ public sealed class IndexService : IAsyncDisposable
 
     public async Task ChangeRootsAsync(IEnumerable<string> roots, CancellationToken cancellation = default)
     {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _lifetime.Token);
         string[] normalized = PathRules.NormalizeRoots(roots);
-        if (_started) await _cacheReady.Task.WaitAsync(cancellation).ConfigureAwait(false);
+        if (_started) await _cacheReady.Task.WaitAsync(linked.Token).ConfigureAwait(false);
         try { _activeScan?.Cancel(); } catch (ObjectDisposedException) { }
-        await _scanGate.WaitAsync(cancellation).ConfigureAwait(false);
+        await _scanGate.WaitAsync(linked.Token).ConfigureAwait(false);
         try
         {
             foreach (FileSystemWatcher watcher in _watchers) watcher.Dispose();
@@ -115,27 +125,49 @@ public sealed class IndexService : IAsyncDisposable
             Publish(); StartWatchers(); Notify();
         }
         finally { _scanGate.Release(); }
-        await RebuildAsync(cancellation).ConfigureAwait(false);
+        await RebuildAsync(linked.Token).ConfigureAwait(false);
+    }
+
+    private void InitializeCache(CancellationToken token)
+    {
+        try
+        {
+            CachedCatalog? ready = _cache.OpenReady(Roots, _effectiveExcluded, token);
+            if (ready is not null)
+            {
+                Volatile.Write(ref _catalog, ready.Catalog); _lastSaved = ready.SavedUtc;
+                _message = "索引就绪 · 正在后台核对文件变化"; Notify();
+                _log.Write($"Direct index ready: {ready.Catalog.Entries.Count} entries.");
+            }
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException)
+        { _log.Write("Direct index unavailable; using compatible cache", error); }
+        LoadCache(token);
     }
 
     private void LoadCache(CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         RefreshExclusions();
         try
         {
             CachedIndex? cached = _cache.Load(token, _factory);
-            if (cached is null) return;
+            if (cached is null) { _mutableReady = true; return; }
             _entries.EnsureCapacity(cached.Entries.Count(entry => Roots.Any(root => PathRules.IsWithin(entry, root))));
             foreach (FileEntry entry in cached.Entries)
                 if (Roots.Any(root => PathRules.IsWithin(entry, root)) && !IsExcluded(entry))
                     _entries.Upsert(entry);
             _factory.Trim(_entries.Snapshot());
+            bool directWasCurrent = Catalog.IsPersistent && Catalog.Entries.Count == _entries.Count;
             _lastSaved = cached.SavedUtc;
             _message = "已载入缓存，正在核对磁盘变化";
-            Publish(); Notify();
+            _mutableReady = true;
+            Publish();
+            if (directWasCurrent) Interlocked.Exchange(ref _dirtyToSave, 0);
+            Notify();
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
-        { _log.Write("Cache load failed; rebuilding", error); }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException)
+        { _mutableReady = true; _log.Write("Cache load failed; rebuilding", error); }
     }
 
     private void ScanRoot(string root, CancellationToken token)
@@ -295,6 +327,7 @@ public sealed class IndexService : IAsyncDisposable
     private int _dirtyToSave;
     private void Publish(bool fastLookup = false)
     {
+        if (!_mutableReady) return;
         lock (_publishGate)
         {
             if (Interlocked.Exchange(ref _dirty, 0) == 0 && Snapshot.Length == _entries.Count &&
@@ -309,22 +342,25 @@ public sealed class IndexService : IAsyncDisposable
     private void Notify() => Changed?.Invoke(State);
     private async Task SaveAsync(CancellationToken token)
     {
-        await _cache.SaveAsync(Snapshot, Roots, token).ConfigureAwait(false);
+        await _cache.SaveAsync(Snapshot, Roots, token, _effectiveExcluded).ConfigureAwait(false);
         _lastSaved = DateTime.UtcNow; Interlocked.Exchange(ref _dirtyToSave, 0);
     }
 
     public async ValueTask DisposeAsync()
     {
         _lifetime.Cancel();
-        foreach (FileSystemWatcher watcher in _watchers) watcher.Dispose();
+        if (_initialization is not null)
+            try { await _initialization.ConfigureAwait(false); } catch (OperationCanceledException) { }
         if (_maintenance is not null)
             try { await _maintenance.ConfigureAwait(false); } catch (OperationCanceledException) { }
         await _scanGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            foreach (FileSystemWatcher watcher in _watchers) watcher.Dispose(); _watchers.Clear();
             Publish();
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            if (Snapshot.Length > 0) await SaveAsync(timeout.Token).ConfigureAwait(false);
+            if (_mutableReady && Snapshot.Length > 0 && Volatile.Read(ref _dirtyToSave) != 0)
+                await SaveAsync(timeout.Token).ConfigureAwait(false);
         }
         catch (Exception error) when (error is IOException or OperationCanceledException or UnauthorizedAccessException)
         { _log.Write("Final cache save skipped", error); }

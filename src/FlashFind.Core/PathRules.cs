@@ -4,18 +4,24 @@ namespace FlashFind.Core;
 public static class PathRules
 {
     public static bool IsWithin(FileEntry entry, string root)
+        => IsWithin(entry.ParentPath, entry.Name, root);
+
+    public static bool IsWithin(ReadOnlySpan<char> parent, ReadOnlySpan<char> name, string root)
     {
-        if (IsWithin(entry.ParentPath, root)) return true;
+        if (IsWithin(parent, root)) return true;
         string normalized = Path.TrimEndingDirectorySeparator(root);
-        int separatorLength = Path.EndsInDirectorySeparator(entry.ParentPath) ? 0 : 1;
-        int nameOffset = entry.ParentPath.Length + separatorLength;
-        return normalized.Length == nameOffset + entry.Name.Length &&
-            normalized.AsSpan(0, entry.ParentPath.Length).Equals(entry.ParentPath, StringComparison.OrdinalIgnoreCase) &&
-            (separatorLength == 0 || normalized[entry.ParentPath.Length] is '\\' or '/') &&
-            normalized.AsSpan(nameOffset).Equals(entry.Name, StringComparison.OrdinalIgnoreCase);
+        int separatorLength = Path.EndsInDirectorySeparator(parent) ? 0 : 1;
+        int nameOffset = parent.Length + separatorLength;
+        return normalized.Length == nameOffset + name.Length &&
+            normalized.AsSpan(0, parent.Length).Equals(parent, StringComparison.OrdinalIgnoreCase) &&
+            (separatorLength == 0 || normalized[parent.Length] is '\\' or '/') &&
+            normalized.AsSpan(nameOffset).Equals(name, StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsWithin(string path, string root)
+        => IsWithin(path.AsSpan(), root);
+
+    public static bool IsWithin(ReadOnlySpan<char> path, string root)
     {
         string normalized = Path.TrimEndingDirectorySeparator(root);
         if (!path.StartsWith(normalized, StringComparison.OrdinalIgnoreCase)) return false;

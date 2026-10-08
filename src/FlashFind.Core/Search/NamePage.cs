@@ -1,5 +1,6 @@
 // 文件用途：紧凑名称页；ASCII 每字节一字，Unicode 保留 UTF-16，条目只按序号引用。
 using System.Text;
+using System.Runtime.InteropServices;
 
 namespace FlashFind.Core.Search;
 
@@ -63,5 +64,15 @@ internal sealed class NamePage
         if (_ascii is null) return _unicode!.IndexOf(normalized, position, StringComparison.Ordinal);
         int relative = _ascii.AsSpan(position).IndexOf(asciiPattern);
         return relative < 0 ? -1 : position + relative;
+    }
+
+    internal void Write(BinaryWriter writer)
+    {
+        int count = _offsets.Length - 1;
+        writer.Write(_ascii is null ? 1 : 0); writer.Write(count);
+        writer.Write(_ascii?.Length ?? checked(_unicode!.Length * sizeof(char)));
+        writer.Write(MemoryMarshal.AsBytes(_indices.AsSpan(_start, count)));
+        writer.Write(MemoryMarshal.AsBytes(_offsets.AsSpan()));
+        if (_ascii is not null) writer.Write(_ascii); else writer.Write(MemoryMarshal.AsBytes(_unicode.AsSpan()));
     }
 }

@@ -19,6 +19,8 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs args)
     {
         base.OnStartup(args);
+        if (args.Args.Length == 3 && args.Args[0] is "--verify-startup" or "--verify-startup-background")
+        { _ = VerifyStartupAsync(args.Args[1], args.Args[2], args.Args[0] == "--verify-startup-background"); return; }
         if (args.Args.Length == 2 && args.Args[0] == "--verify")
         { _ = VerifyPackageAsync(args.Args[1]); return; }
         _instance = new Mutex(true, "Local\\FlashFind.Desktop", out bool created);
@@ -63,6 +65,12 @@ public partial class App : Application
         {
             Directory.CreateDirectory(output); File.WriteAllText(Path.Combine(output, "package-failure.txt"), error.ToString()); Shutdown(1);
         }
+    }
+    private async Task VerifyStartupAsync(string cachePath, string output, bool completeBackgroundLoad)
+    {
+        try { await StartupDiagnostics.RunAsync(cachePath, output, completeBackgroundLoad); Shutdown(0); }
+        catch (Exception error)
+        { Directory.CreateDirectory(output); File.WriteAllText(Path.Combine(output, "startup-failure.txt"), error.ToString()); Shutdown(1); }
     }
     protected override void OnExit(ExitEventArgs args)
     {

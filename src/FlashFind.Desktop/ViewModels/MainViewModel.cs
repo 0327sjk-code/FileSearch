@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Data;
 using System.Windows.Threading;
 using FlashFind.Core;
 using FlashFind.Core.Indexing;
@@ -31,7 +32,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _scanning, _searching, _settingsOpen, _savingSettings, _disposed;
     private int _indexedCount;
     private SearchCatalog? _observedCatalog;
-    private ResultList _results = new(Array.Empty<FileEntry>());
+    private readonly ResultList _results = new(Array.Empty<FileEntry>());
     private FileResult? _selected;
     private CategoryChoice _category;
     private DriveFilter _drive;
@@ -88,7 +89,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _drive = value; Raise(); ScheduleSearch();
         }
     }
-    public ResultList Results { get => _results; private set => Set(ref _results, value); }
+    public ResultList Results => _results;
     public FileResult? Selected { get => _selected; set { if (Set(ref _selected, value)) Raise(nameof(SelectionText)); } }
     public string SelectionText => Selected?.FullPath ?? "双击打开文件 · Enter 打开 · Alt+Enter 定位 · Ctrl+C 复制路径";
     public string Status { get => _status; private set => Set(ref _status, value); }
@@ -105,13 +106,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public string EmptyTitle => _indexedCount == 0 && Scanning ? "正在建立索引" : string.IsNullOrWhiteSpace(Query) ? "开始查找你的文件" : "没有匹配的文件";
     public string EmptyDetail => _indexedCount == 0 && Scanning ? "首次扫描完成后，搜索会更快。你可以现在输入文件名。" : string.IsNullOrWhiteSpace(Query) ? "输入文件名或其中几个字，结果会显示在这里。" : "试试更短的文件名，或在硬盘设置中检查检索范围。";
 
-    public Task StartAsync()
+    public Task StartAsync(CancellationToken cancellation = default)
     {
         IReadOnlyList<IndexedDrive> available = _discoverDrives();
         string[] roots = _settings.UseAllInternalDrives ? available.Select(x => x.Root).ToArray()
             : available.Select(x => x.Root).Where(root => _settings.Roots.Contains(root, StringComparer.OrdinalIgnoreCase)).ToArray();
         UpdateDriveFilters(roots);
-        _startup = _index.StartAsync(roots);
+        _startup = _index.StartAsync(roots, cancellation);
         return _startup;
     }
 
@@ -149,7 +150,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             SearchResponse response = await Task.Run(() => _engine.Search(catalog, query, cancellation.Token), cancellation.Token);
             if (cancellation.IsCancellationRequested || _disposed) return;
             string? selectedPath = Selected?.FullPath;
-            Results = new(response.Items);
+            // 清掉表格的旧选择和当前项，避免 Reset 时逐个寻找旧行对象。
+            Selected = null;
+            CollectionViewSource.GetDefaultView(Results).MoveCurrentToPosition(-1);
+            Results.Update(response.Items); Raise(nameof(Results));
             // 不全量创建行对象；选中位置只在有旧选择时检索。
             int selectedIndex = selectedPath is null ? -1 : FindPath(response.Items, selectedPath);
             Selected = Results.Count == 0 ? null : (FileResult?)Results[selectedIndex < 0 ? 0 : selectedIndex];
@@ -166,6 +170,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private static int FindPath(IReadOnlyList<FileEntry> entries, string path)
     {
         FileIdentity identity = FileIdentity.FromPath(path);
+        if (entries is IFileIdentityLookup lookup) return lookup.FindIdentity(identity);
         for (int index = 0; index < entries.Count; index++)
             if (FileIdentity.Comparer.Equals(entries[index].Identity, identity)) return index;
         return -1;
@@ -224,7 +229,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _disposed = true; _searchTimer.Stop(); _toastTimer.Stop(); _searchCancellation?.Cancel();
         _index.Changed -= IndexChanged;
         await _index.DisposeAsync();
-        if (_startup is not null) await _startup;
+        if (_startup is not null)
+            try { await _startup; } catch (OperationCanceledException) { }
         _searchCancellation?.Dispose();
     }
 }

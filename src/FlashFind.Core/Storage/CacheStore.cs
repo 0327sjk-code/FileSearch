@@ -2,10 +2,13 @@
 using System.IO.Compression;
 using System.Text;
 using FlashFind.Core.Indexing;
+using FlashFind.Core.Search;
 
 namespace FlashFind.Core.Storage;
 
 public sealed record CachedIndex(FileEntry[] Entries, string[] Roots, DateTime SavedUtc);
+public sealed record CachedCatalog(SearchCatalog Catalog, DateTime SavedUtc);
+public sealed record ReadyIndexInfo(string[] Roots, string[] Excluded, DateTime SavedUtc, int EntryCount, int FileCount, long DataBytes);
 
 public sealed class CacheStore(string path)
 {
@@ -14,6 +17,45 @@ public sealed class CacheStore(string path)
     private const int MaximumEntries = 20_000_000;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     public string Path { get; } = System.IO.Path.GetFullPath(path);
+    public string ReadyPath => Path + ".ready";
+    public string ReadyDataPath => ReadyIndexPointer.Read(ReadyPath);
+    public ReadyIndexInfo ReadReadyInfo() => PersistentIndex.ReadInfo(ReadyDataPath, SourceStamp.Read(Path));
+
+    public CachedCatalog? OpenReady(string[] roots, string[]? excluded = null, CancellationToken cancellation = default)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        if (!File.Exists(ReadyPath) || !File.Exists(Path)) return null;
+        string data = ReadyDataPath;
+        PersistentIndex source = PersistentIndex.Open(data, SourceStamp.Read(Path));
+        var catalog = new PersistentCatalog(source, roots, excluded ?? Array.Empty<string>(), cancellation);
+        ReadyIndexPointer.CleanOld(ReadyPath, data);
+        return new(new SearchCatalog(catalog), source.SavedUtc);
+    }
+
+    public async Task PrepareReadyAsync(string[] roots, string[]? excluded = null, CancellationToken cancellation = default)
+    {
+        excluded ??= Array.Empty<string>();
+        await _writeLock.WaitAsync(cancellation).ConfigureAwait(false);
+        string temporary = ReadyPath + "." + Guid.NewGuid().ToString("N") + ".data";
+        bool published = false;
+        try
+        {
+            await Task.Run(() =>
+            {
+                SourceStamp source = SourceStamp.Read(Path);
+                CachedIndex cached = Load(cancellation) ?? throw new FileNotFoundException("还没有可转换的文件索引。", Path);
+                FileEntry[] selected = cached.Entries.Where(entry => roots.Any(root => PathRules.IsWithin(entry, root)) &&
+                    !excluded.Any(root => PathRules.IsWithin(entry, root))).ToArray();
+                ReadyIndexWriter.Write(temporary, selected, roots, excluded, cached.SavedUtc, source, cancellation);
+                cancellation.ThrowIfCancellationRequested();
+                if (SourceStamp.Read(Path) != source) throw new IOException("转换期间原索引已变化，请重新转换。");
+                ReadyIndexPointer.Publish(ReadyPath, temporary); published = true;
+                ReadyIndexPointer.CleanOld(ReadyPath, temporary);
+            }, cancellation).ConfigureAwait(false);
+        }
+        finally
+        { if (!published && File.Exists(temporary)) File.Delete(temporary); _writeLock.Release(); }
+    }
 
     public CachedIndex? Load(CancellationToken cancellation = default, EntryFactory? factory = null)
     {
@@ -45,21 +87,24 @@ public sealed class CacheStore(string path)
         return new(entries, roots, saved);
     }
 
-    public async Task SaveAsync(FileEntry[] entries, string[] roots, CancellationToken cancellation = default)
+    public async Task SaveAsync(FileEntry[] entries, string[] roots, CancellationToken cancellation = default, string[]? excluded = null)
     {
         await _writeLock.WaitAsync(cancellation).ConfigureAwait(false);
         string temporary = Path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        string readyTemporary = ReadyPath + "." + Guid.NewGuid().ToString("N") + ".data";
+        bool published = false;
         try
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
             await Task.Run(() =>
             {
+                DateTime saved = DateTime.UtcNow;
                 using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 131072))
                 {
                     using (var gzip = new GZipStream(file, CompressionLevel.Fastest, leaveOpen: true))
                     using (var writer = new BinaryWriter(gzip, Encoding.UTF8, leaveOpen: true))
                     {
-                        writer.Write(Magic); writer.Write(FormatVersion); writer.Write(DateTime.UtcNow.Ticks);
+                        writer.Write(Magic); writer.Write(FormatVersion); writer.Write(saved.Ticks);
                         writer.Write(roots.Length);
                         foreach (string root in roots) writer.Write(root);
                         writer.Write(entries.Length);
@@ -73,13 +118,18 @@ public sealed class CacheStore(string path)
                     }
                     file.Flush(flushToDisk: true);
                 }
+                ReadyIndexWriter.Write(readyTemporary, entries, roots, excluded ?? Array.Empty<string>(), saved,
+                    SourceStamp.Read(temporary), cancellation);
                 cancellation.ThrowIfCancellationRequested();
                 File.Move(temporary, Path, overwrite: true);
+                ReadyIndexPointer.Publish(ReadyPath, readyTemporary); published = true;
+                ReadyIndexPointer.CleanOld(ReadyPath, readyTemporary);
             }, cancellation).ConfigureAwait(false);
         }
         finally
         {
             if (File.Exists(temporary)) File.Delete(temporary);
+            if (!published && File.Exists(readyTemporary)) File.Delete(readyTemporary);
             _writeLock.Release();
         }
     }
