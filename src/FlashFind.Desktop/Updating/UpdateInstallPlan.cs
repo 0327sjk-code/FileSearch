@@ -35,7 +35,7 @@ public static class UpdateInstallFiles
         plan.Release.Validate();
         string root = Path.GetFullPath(plan.Root), stage = Path.GetFullPath(plan.Stage), target = Path.GetFullPath(plan.Target);
         if (!Path.IsPathFullyQualified(plan.Target) || target.StartsWith(@"\\", StringComparison.Ordinal) ||
-            Path.GetFileName(target) != UpdateProduct.ExecutableName || plan.Target != target ||
+            !Path.GetExtension(target).Equals(".exe", StringComparison.OrdinalIgnoreCase) || plan.Target != target ||
             Path.GetDirectoryName(stage) != root || !Guid.TryParseExact(Path.GetFileName(stage), "N", out _) ||
             Path.GetFullPath(planPath) != Path.Combine(stage, PlanName) ||
             (!plan.Diagnostic && !root.Equals(Path.GetFullPath(Root), StringComparison.OrdinalIgnoreCase)) ||

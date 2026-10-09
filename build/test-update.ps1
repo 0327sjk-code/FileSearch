@@ -32,7 +32,8 @@ function Assert-Diagnostic([bool]$Condition, [string]$Name) {
     if (-not $Condition) { throw "更新回归失败：$Name" }
 }
 
-foreach ($case in @(@{ InTray = $false; FailHealth = $false }, @{ InTray = $true; FailHealth = $false }, @{ InTray = $true; FailHealth = $true })) {
+foreach ($case in @(@{ InTray = $false; FailHealth = $false }, @{ InTray = $true; FailHealth = $false }, @{ InTray = $true; FailHealth = $true },
+                   @{ InTray = $false; FailHealth = $false; FileName = $assetName }, @{ InTray = $true; FailHealth = $false; FileName = $assetName })) {
     $inTray = $case.InTray
     $caseRoot = Join-Path $root ([Guid]::NewGuid().ToString('N'))
     $installDirectory = Join-Path $caseRoot '应用 中文 空格'
@@ -41,7 +42,7 @@ foreach ($case in @(@{ InTray = $false; FailHealth = $false }, @{ InTray = $true
     $stage = Join-Path $updatesRoot $identity
     [IO.Directory]::CreateDirectory($installDirectory) | Out-Null
     [IO.Directory]::CreateDirectory($stage) | Out-Null
-    $target = Join-Path $installDirectory '文件搜索.exe'
+    $target = Join-Path $installDirectory $(if ($case.FileName) { $case.FileName } else { '文件搜索.exe' })
     $settingsPath = Join-Path $installDirectory 'settings.json'
     Copy-Item -LiteralPath $OldProgram -Destination $target
     Save-DiagnosticJson $settingsPath @{ UseAllInternalDrives = $false; Roots = @('C:\','D:\'); Dock = @{ Edge = 'left'; Position = 0.67; Enabled = $true } }
@@ -103,7 +104,7 @@ foreach ($case in @(@{ InTray = $false; FailHealth = $false }, @{ InTray = $true
         [IO.File]::WriteAllText((Join-Path $updatesRoot "finish-$identity.signal"), '')
         if (-not $child.WaitForExit(60000)) { throw '新版诊断进程未退出。' }
         Assert-Diagnostic ($child.ExitCode -eq 0 -and -not (Test-Path -LiteralPath $stage)) '临时安装器清理且诊断进程正常退出'
-        $reports.Add([pscustomobject]@{ Passed = $true; InTray = $inTray; HealthFailure = $case.FailHealth; RolledBack = $result.RolledBack; Before = $parentInfo.Version; After = $restarted.Version; SettingsPreserved = $true; ResumePreserved = $true; ForegroundWindowsOpened = 0; ExplorerInvoked = $false; StageCleaned = $true; CaseDirectory = $caseRoot })
+        $reports.Add([pscustomobject]@{ Passed = $true; InTray = $inTray; FileName = [IO.Path]::GetFileName($target); HealthFailure = $case.FailHealth; RolledBack = $result.RolledBack; Before = $parentInfo.Version; After = $restarted.Version; SettingsPreserved = $true; ResumePreserved = $true; ForegroundWindowsOpened = 0; ExplorerInvoked = $false; StageCleaned = $true; CaseDirectory = $caseRoot })
     } finally {
         # 只清理当前脚本明确创建的诊断子进程，不接触用户正在运行的软件。
         foreach ($ownedProcess in @($parent,$helper,$child)) {
