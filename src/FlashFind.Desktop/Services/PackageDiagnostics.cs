@@ -11,6 +11,7 @@ using FlashFind.Core.Indexing;
 using FlashFind.Core.Storage;
 using FlashFind.Desktop.ViewModels;
 using FlashFind.Desktop.Views;
+using FlashFind.Desktop.Updating;
 
 namespace FlashFind.Desktop.Services;
 
@@ -24,6 +25,7 @@ internal static class PackageDiagnostics
         File.WriteAllText(file, "诊断样本");
         string[] names = { "水面材质_浅滩.uasset", "水面材质_泡沫.uasset", "水面材质_折射.uasset", "项目截图.png", "项目预览.mp4" };
         foreach (string name in names) File.WriteAllText(Path.Combine(fixtures, name), "诊断样本");
+        for (int sample = 0; sample < 20; sample++) File.WriteAllText(Path.Combine(fixtures, $"定位回归_{sample:00}.txt"), "诊断样本");
         var log = new AppLog(Path.Combine(output, "logs"));
         var index = new IndexService(new CacheStore(Path.Combine(output, "index.bin.gz")), log, preferNtfs: false);
         await index.StartAsync(new[] { fixtures });
@@ -34,6 +36,21 @@ internal static class PackageDiagnostics
         try
         {
             var window = new MainWindow(model);
+            int updateRequests = 0;
+            var updates = new UpdateViewModel(() => updateRequests++); model.AttachUpdates(updates);
+            Button updateButton = (Button)window.FindName("CheckUpdateButton");
+            await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            updateButton.Command.Execute(null);
+            if (updateRequests != 1) throw new InvalidOperationException("主界面手动更新按钮未接入。");
+            updates.Checking();
+            if (updateButton.Command.CanExecute(null)) throw new InvalidOperationException("更新检查未阻止重复请求。");
+            updates.Complete("");
+            model.Query = "水面"; model.Category = model.Categories[1];
+            UpdateResumeState resume = UpdateResume.Capture(model, true);
+            model.Query = ""; model.Category = model.Categories[2]; UpdateResume.Apply(model, resume);
+            if (model.Query != "水面" || model.Category != model.Categories[1] || !resume.InTray)
+                throw new InvalidOperationException("更新后的查询和分类恢复失败。");
+            model.Category = model.Categories[0];
             IReadOnlyDictionary<string, bool> placeholderChecks = await InputDiagnostics.VerifyAsync(window);
             if (window.Icon is not BitmapFrame icon || icon.Decoder?.Frames.Count != 10)
                 throw new InvalidOperationException("程序窗口的多分辨率图标加载失败。");
@@ -47,11 +64,18 @@ internal static class PackageDiagnostics
             Capture(window, Path.Combine(output, "硬盘设置.png"), 1140, 748);
             model.LocateCommand.Execute(model.Results[0]);
             if (gateway.Locations != 1) throw new InvalidOperationException("发布包定位命令自检失败。");
+            IReadOnlyDictionary<string, bool> floatingChecks = await QuickSearchDiagnostics.RunAsync(model, Path.Combine(output, "floating"), () => gateway.Locations);
+            IReadOnlyDictionary<string, bool> locateChecks = await QuickLocateDiagnostics.RunAsync(model, index.Snapshot, Path.Combine(output, "locate"), () => gateway.Locations);
+            IReadOnlyDictionary<string, bool> collapseChecks = await QuickCollapseDiagnostics.RunAsync(model, Path.Combine(output, "collapse"));
             int visibleWindows = BackgroundWindowAudit.VisibleWindowCount();
             if (visibleWindows != 0) throw new InvalidOperationException("离屏验证意外创建了可见窗口。");
             object result = new { Passed = true, AppName = window.Title, FilesIndexed = index.Snapshot.Length,
                 DefaultInternalDrives = DriveDiscovery.InternalDrives(), Categories = model.Categories.Select(x => x.Title),
                 PlaceholderChecks = placeholderChecks, WindowIconFrames = icon.Decoder.Frames.Select(x => x.PixelWidth),
+                FloatingChecks = floatingChecks,
+                LocateChecks = locateChecks,
+                CollapseChecks = collapseChecks,
+                ManualUpdateButtonVerified = updateRequests == 1,
                 LocateDispatches = gateway.Locations, ForegroundWindowsOpened = visibleWindows, ExplorerInvoked = false };
             File.WriteAllText(Path.Combine(output, "package-verification.json"), JsonSerializer.Serialize(result,
                 new JsonSerializerOptions { WriteIndented = true }));

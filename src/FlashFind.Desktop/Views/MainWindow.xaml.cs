@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Data;
 using FlashFind.Desktop.ViewModels;
 
 namespace FlashFind.Desktop.Views;
@@ -16,6 +17,22 @@ public partial class MainWindow : Window
         Loaded += (_, _) => SearchInput.Focus();
     }
     public MainViewModel ViewModel => (MainViewModel)DataContext;
+    public void FocusSearch() { SearchInput.Focus(); SearchInput.SelectAll(); }
+    public void SetResultsActive(bool active)
+    {
+        if (active)
+        {
+            BindingOperations.SetBinding(ResultsGrid, ItemsControl.ItemsSourceProperty, new Binding(nameof(MainViewModel.Results)));
+            BindingOperations.SetBinding(ResultsGrid, System.Windows.Controls.Primitives.Selector.SelectedItemProperty,
+                new Binding(nameof(MainViewModel.Selected)) { Mode = BindingMode.TwoWay });
+        }
+        else
+        {
+            BindingOperations.ClearBinding(ResultsGrid, System.Windows.Controls.Primitives.Selector.SelectedItemProperty);
+            BindingOperations.ClearBinding(ResultsGrid, ItemsControl.ItemsSourceProperty);
+            ResultsGrid.ItemsSource = null;
+        }
+    }
 
     private void FitColumns()
     {

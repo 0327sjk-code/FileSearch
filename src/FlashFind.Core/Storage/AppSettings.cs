@@ -11,6 +11,7 @@ public sealed record AppSettings
     public bool PreferNtfs { get; init; } = true;
     public double WindowWidth { get; init; } = 1140;
     public double WindowHeight { get; init; } = 780;
+    public DockSettings Dock { get; init; } = new();
     public static string DataDirectory => System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FlashFind");
     public static string[] DefaultRoots() => Indexing.DriveDiscovery.InternalDrives()

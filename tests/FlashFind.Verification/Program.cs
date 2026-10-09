@@ -39,6 +39,7 @@ internal static class Program
         try
         {
             checks.CoreTests();
+            checks.DockGeometryTests();
             checks.CompactIndexTests();
             await checks.CacheTestsAsync();
             await checks.PersistentIndexTestsAsync();

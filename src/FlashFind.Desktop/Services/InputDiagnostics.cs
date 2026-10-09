@@ -13,6 +13,10 @@ internal static class InputDiagnostics
     {
         var input = (TextBox)window.FindName("SearchInput");
         var placeholder = (TextBlock)window.FindName("SearchPlaceholder");
+        return await VerifyAsync(input, placeholder);
+    }
+    public static async Task<IReadOnlyDictionary<string, bool>> VerifyAsync(TextBox input, TextBlock placeholder)
+    {
         // 只在离屏诊断实例中改变依赖属性，避免真正移动用户的键盘焦点。
         var key = (DependencyPropertyKey?)typeof(UIElement).GetField("IsKeyboardFocusWithinPropertyKey",
             BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null)

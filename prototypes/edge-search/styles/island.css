@@ -1,0 +1,58 @@
+/* 文件用途：同一块白色表面从窄入口伸展；四边统一裁切动画与拖动反馈。 */
+.edge-dock { position: fixed; top: 0; left: 0; z-index: 35; color: var(--ink); transform: translate3d(var(--dock-x, 0px), var(--dock-y, 0px), 0); filter: drop-shadow(0 3px 6px rgb(0 0 0 / .16)); transition: transform 160ms var(--ease-out); }
+.edge-dock:not([data-ready="true"]) { transition: none; }
+body[data-mode="window"] .edge-dock { opacity: 0; visibility: hidden; pointer-events: none; }
+.island-surface { position: absolute; background: var(--white); border-radius: var(--island-radii, 16px); clip-path: var(--closed-clip, inset(0 0 0 100%)); transition: clip-path 150ms cubic-bezier(.25, 1, .5, 1); }
+.edge-dock[data-open="true"] .island-surface { clip-path: inset(0px 0px 0px 0px round var(--island-radii, 16px)); transition: clip-path 220ms var(--ease-out); }
+.edge-panel { color: var(--ink); opacity: 0; pointer-events: none; transition: opacity 60ms; }
+.edge-dock[data-open="true"] .edge-panel { opacity: 1; pointer-events: auto; transition: opacity 100ms 35ms; }
+.edge-trigger { position: relative; z-index: 2; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: grab; touch-action: none; user-select: none; }
+.edge-trigger:focus-visible { outline-offset: -2px; border-radius: 8px; }
+.edge-trigger > .icon { position: absolute; top: 50%; left: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); transition: opacity 80ms; }
+.peek-grip { opacity: 0; }
+.edge-dock[data-open="true"] .peek-icon { opacity: 0; }
+.edge-dock[data-open="true"] .peek-grip { opacity: .8; }
+.edge-dock[data-edge="top"] .peek-grip, .edge-dock[data-edge="bottom"] .peek-grip { transform: translate(-50%, -50%) rotate(90deg); }
+.trigger-surface { position: absolute; inset: 0; border-radius: var(--radius-md); background: var(--white); opacity: 0; }
+.edge-dock[data-dragging="true"] { cursor: grabbing; transition: none; }
+.edge-dock[data-dragging="true"] .island-surface { visibility: hidden; }
+.edge-dock[data-dragging="true"] .edge-trigger { cursor: grabbing; }
+.edge-dock[data-dragging="true"] .trigger-surface, .edge-dock[data-dragging="true"] .peek-icon { opacity: 1; }
+.edge-dock[data-dragging="true"] .peek-grip { opacity: 0; }
+.search-view-edge .search-field { min-height: 64px; height: 64px; border: 0; border-radius: 0; background: transparent; padding: 8px 12px; gap: 8px; }
+.edge-dock[data-edge="right"] .search-field { padding-right: 26px; }
+.edge-dock[data-edge="left"] .search-field { padding-left: 26px; }
+.search-view-edge .search-input { height: 48px; }
+.search-view-edge .search-field > .icon { width: 18px; height: 18px; }
+.search-view-edge .icon-button { width: 28px; height: 32px; flex: 0 0 auto; }
+.search-view-edge .icon-button .icon { width: 16px; height: 16px; }
+.drag-handle { cursor: grab; touch-action: none; user-select: none; }
+.search-view-edge .search-body { display: grid; grid-template-rows: 0fr; opacity: 0; pointer-events: none; transition: grid-template-rows 180ms var(--ease-out), opacity 120ms; }
+.search-view-edge[data-has-query="true"] .search-body { grid-template-rows: 1fr; opacity: 1; pointer-events: auto; }
+.search-view-edge .search-body-content { overflow: hidden; max-height: var(--results-max-height, 432px); padding: 0 12px; }
+.search-view-edge .search-footer { margin-bottom: 8px; }
+.search-view-edge[data-results-above="true"] .search-body { order: -1; }
+.edge-dock[data-edge="left"] .edge-collapse .icon { transform: rotate(180deg); }
+.edge-dock[data-edge="top"] .edge-collapse .icon { transform: rotate(-90deg); }
+.edge-dock[data-edge="bottom"] .edge-collapse .icon { transform: rotate(90deg); }
+.edge-guide { left: 0; top: 0; right: auto; width: max-content; }
+.edge-guide[data-edge="right"] { transform: translate(-100%, -50%); }
+.edge-guide[data-edge="left"] { transform: translate(0, -50%); }
+.edge-guide[data-edge="top"] { transform: translate(-50%, 0); }
+.edge-guide[data-edge="bottom"] { transform: translate(-50%, -100%); }
+body:has(.edge-dock[data-dragging="true"]) .edge-guide { opacity: 0; }
+.dock-target { position: fixed; z-index: 32; color: var(--desktop-muted); pointer-events: none; opacity: 0; visibility: hidden; }
+.dock-target[data-visible="true"] { opacity: 1; visibility: visible; }
+.dock-target::before { content: ''; position: absolute; background: currentColor; border-radius: 3px; }
+.dock-target[data-edge="right"]::before, .dock-target[data-edge="left"]::before { top: 8px; bottom: 8px; width: 3px; }
+.dock-target[data-edge="right"]::before { right: 0; }
+.dock-target[data-edge="left"]::before { left: 0; }
+.dock-target[data-edge="top"]::before, .dock-target[data-edge="bottom"]::before { left: 8px; right: 8px; height: 3px; }
+.dock-target[data-edge="top"]::before { top: 0; }
+.dock-target[data-edge="bottom"]::before { bottom: 0; }
+.dock-target span { position: absolute; width: max-content; font-size: var(--text-caption); }
+.dock-target[data-edge="right"] span { right: 32px; top: 50%; transform: translateY(-50%); }
+.dock-target[data-edge="left"] span { left: 32px; top: 50%; transform: translateY(-50%); }
+.dock-target[data-edge="top"] span { top: 32px; left: 50%; transform: translateX(-50%); }
+.dock-target[data-edge="bottom"] span { bottom: 32px; left: 50%; transform: translateX(-50%); }
+@media (max-width: 360px) { .search-view-edge .edge-restore { display: none; } .search-view-edge .search-field { gap: 6px; } }

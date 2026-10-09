@@ -78,6 +78,20 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand SelectAllDrivesCommand { get; }
     public ICommand RescanCommand { get; }
     public AppSettings Settings => _settings;
+    public UpdateViewModel? Updates { get; private set; }
+    public void AttachUpdates(UpdateViewModel updates) { Updates = updates; Raise(nameof(Updates)); }
+    internal void RecordDockState(string state) => _log.Write("Floating search: " + state);
+    public bool SaveDockSettings(DockSettings dock)
+    {
+        try
+        {
+            AppSettings updated = _settings with { Dock = dock.Normalize() };
+            updated.Save(_settingsPath); _settings = updated; Raise(nameof(Settings));
+            return true;
+        }
+        catch (Exception error)
+        { _log.Write("Dock settings save failed", error); ShowToast("悬浮栏位置保存失败：" + error.Message); return false; }
+    }
     public string Query { get => _query; set { if (Set(ref _query, value)) ScheduleSearch(); } }
     public CategoryChoice Category { get => _category; set { if (value is not null && Set(ref _category, value)) ScheduleSearch(); } }
     public DriveFilter Drive

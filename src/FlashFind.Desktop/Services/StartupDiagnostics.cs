@@ -13,7 +13,7 @@ namespace FlashFind.Desktop.Services;
 
 internal static class StartupDiagnostics
 {
-    public static async Task RunAsync(string cachePath, string output, bool completeBackgroundLoad = false)
+    public static async Task RunAsync(string cachePath, string output, bool completeBackgroundLoad = false, bool verifyFloating = false)
     {
         Directory.CreateDirectory(output);
         DateTime processStart = Process.GetCurrentProcess().StartTime.ToUniversalTime();
@@ -64,6 +64,7 @@ internal static class StartupDiagnostics
                     EngineTiming = model.Timing, FirstResultHasPath = model.Selected is null || Path.IsPathFullyQualified(model.Selected.FullPath) });
             }
             measurements.Add(Memory("多次查询后"));
+            object? floating = verifyFloating ? await FloatingMemoryDiagnostics.RunAsync(model, window) : null;
             int visibleWindows = BackgroundWindowAudit.VisibleWindowCount();
             if (visibleWindows != 0 || !earlyResultsBeforeHydration || index.State.IsScanning)
                 throw new InvalidOperationException("启动验证进入了正常界面、完整加载或磁盘扫描。");
@@ -82,6 +83,7 @@ internal static class StartupDiagnostics
                 FullResultsAvailableBeforeHydration = earlyResultsBeforeHydration, BackgroundLoadCompleted = completeBackgroundLoad,
                 ForegroundWindowsOpened = visibleWindows, ExplorerInvoked = false,
                 UserDiskScanStarted = false };
+            if (floating is not null) File.WriteAllText(Path.Combine(output, "floating-memory.json"), JsonSerializer.Serialize(floating, new JsonSerializerOptions { WriteIndented = true }));
             File.WriteAllText(Path.Combine(output, "native-startup.json"), JsonSerializer.Serialize(report,
                 new JsonSerializerOptions { WriteIndented = true }));
         }

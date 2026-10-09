@@ -1,0 +1,67 @@
+/* 文件用途：桌面、主窗口与系统托盘的纯页面模拟。 */
+.desktop { min-height: 100vh; min-height: 100dvh; position: relative; overflow: clip; color: var(--desktop-ink); }
+.preview-header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-xl); padding: var(--space-2xl) 40px; }
+.brand { display: flex; align-items: center; gap: var(--space-md); font-size: var(--text-small); font-weight: 600; }
+.preview-label { color: var(--desktop-muted); font-weight: 400; margin-left: var(--space-sm); }
+.prototype-note { color: var(--desktop-muted); font-size: var(--text-caption); }
+.intro { position: absolute; left: max(40px, 8vw); top: 39%; max-width: 440px; }
+body[data-mode="window"] .intro { visibility: hidden; pointer-events: none; }
+.intro-status { display: flex; align-items: center; gap: var(--space-sm); color: var(--desktop-muted); font-size: var(--text-caption); margin: 0 0 20px; }
+.status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+h1 { font-size: 1.875rem; line-height: 1.35; font-weight: 600; letter-spacing: -.035em; margin: 0 0 var(--space-lg); }
+.intro-copy { color: var(--desktop-muted); font-size: var(--text-small); line-height: 1.9; margin: 0 0 28px; }
+.intro-actions { display: flex; align-items: center; gap: var(--space-md); }
+.button { min-height: 42px; border: 0; border-radius: var(--radius-sm); display: inline-flex; align-items: center; justify-content: center; gap: var(--space-md); padding: 0 var(--space-lg); font-size: var(--text-small); transition: background var(--motion-fast), transform var(--motion-fast); }
+.button:active { transform: translateY(1px); }
+.button-primary { background: var(--white); color: var(--ink); }
+.button-primary:hover { background: var(--line); }
+.button-primary .icon { width: 16px; }
+.button-desktop { background: transparent; color: var(--desktop-ink); border: 1px solid oklch(.44 0 0); }
+.button-desktop:hover { background: oklch(.28 0 0); }
+.examples { display: flex; gap: var(--space-lg); align-items: center; margin-top: 28px; color: var(--desktop-muted); font-size: var(--text-caption); }
+.examples button { color: var(--desktop-ink); border: 0; background: transparent; padding: 6px 0; font-size: var(--text-small); text-underline-offset: 5px; }
+.examples button:hover { text-decoration: underline; }
+.boundary-note { margin-top: var(--space-xl); color: var(--desktop-muted); font-size: var(--text-caption); }
+.edge-guide { position: fixed; top: calc(var(--dock-top) + 25px); right: 80px; display: flex; align-items: center; gap: var(--space-md); color: var(--desktop-muted); font-size: var(--text-caption); transition: opacity var(--motion-close); pointer-events: none; }
+body:has(.edge-dock[data-open="true"]) .edge-guide, body[data-mode="window"] .edge-guide { opacity: 0; }
+.taskbar { position: fixed; inset: auto 0 0; height: var(--taskbar-height); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--space-xl); background: oklch(.225 0 0); border-top: 1px solid oklch(.3 0 0); font-size: var(--text-caption); color: var(--desktop-muted); }
+.tray-area { position: relative; display: flex; align-items: center; gap: var(--space-md); height: 100%; }
+.tray-button { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--desktop-ink); }
+.tray-button:hover, .tray-button[aria-expanded="true"] { background: oklch(.35 0 0); }
+.tray-button .app-icon { width: 23px; height: 23px; }
+.tray-menu { position: absolute; right: 0; bottom: calc(var(--taskbar-height) + 4px); width: 192px; padding: var(--space-sm); color: var(--ink); background: var(--white); border-radius: var(--radius-md); box-shadow: var(--window-shadow); z-index: 30; }
+.tray-menu-title { display: block; padding: var(--space-sm) var(--space-sm) var(--space-md); font-size: var(--text-caption); color: var(--muted); }
+.tray-menu button { display: flex; align-items: center; gap: var(--space-md); width: 100%; min-height: 40px; padding: var(--space-sm); background: transparent; border: 0; border-radius: var(--radius-sm); text-align: left; font-size: var(--text-small); }
+.tray-menu button:hover { background: var(--soft); }
+.tray-menu .icon { width: 17px; height: 17px; }
+.main-window { position: fixed; top: 50%; left: 45%; display: flex; flex-direction: column; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 112px); background: var(--white); color: var(--ink); border-radius: var(--radius-lg); box-shadow: var(--window-shadow); z-index: 25; transform: translate(-50%, -46%) scale(.96); opacity: 0; visibility: hidden; transition: transform var(--motion-close) var(--ease-out), opacity var(--motion-close), visibility var(--motion-close); }
+body[data-mode="window"] .main-window { transform: translate(-50%, -50%) scale(1); opacity: 1; visibility: visible; transition-property: transform, opacity; transition-duration: var(--motion-open); }
+.window-titlebar { display: flex; flex-shrink: 0; justify-content: space-between; align-items: center; padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--line); }
+.window-brand { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--text-small); font-weight: 600; }
+.window-brand .app-icon { width: 26px; height: 26px; }
+.window-demo-label { font-size: var(--text-caption); color: var(--muted); font-weight: 400; margin-left: var(--space-sm); }
+.minimize-button { width: 44px; }
+.main-content { display: flex; flex-direction: column; min-height: 0; padding: var(--space-xl); }
+.main-content h2 { flex-shrink: 0; margin: 0 0 var(--space-xl); font-size: var(--text-title); font-weight: 600; letter-spacing: -.025em; }
+.toast { position: fixed; left: var(--space-xl); bottom: calc(var(--taskbar-height) + 20px); max-width: calc(100vw - 48px); transform: translateY(8px); padding: var(--space-md) var(--space-lg); background: var(--white); color: var(--ink); border-radius: var(--radius-md); box-shadow: 0 4px 8px rgb(0 0 0 / .2); font-size: var(--text-small); z-index: 60; opacity: 0; visibility: hidden; transition: opacity var(--motion-close), transform var(--motion-close), visibility var(--motion-close); text-align: center; pointer-events: none; }
+.toast[data-visible="true"] { opacity: 1; visibility: visible; transform: translateY(0); }
+.noscript { position: fixed; bottom: 70px; left: 24px; color: white; }
+@media (max-width: 900px) { .intro { left: 32px; top: 44%; } .preview-header { padding: var(--space-xl); } .main-window { left: 50%; } }
+@media (max-width: 560px) {
+  :root { --dock-top: 112px; }
+  .preview-header { padding: 20px; align-items: flex-start; gap: var(--space-sm); }
+  .brand { gap: var(--space-sm); flex-wrap: wrap; max-width: 180px; }
+  .brand .preview-label { flex-basis: 100%; margin-left: 38px; font-size: var(--text-caption); }
+  .prototype-note { max-width: 80px; text-align: right; line-height: 1.6; }
+  .intro { left: 24px; right: 24px; top: 38%; }
+  h1 { font-size: var(--text-title); }
+  .edge-guide { right: 64px; }
+  .taskbar { padding: 0 var(--space-lg); }
+  .taskbar-label { max-width: 160px; }
+  .main-content { padding: var(--space-lg); }
+  .main-content h2 { font-size: 1.25rem; margin-bottom: var(--space-lg); }
+  .window-demo-label { display: none; }
+  body:has(.edge-dock[data-open="true"]) .intro { opacity: .2; pointer-events: none; }
+}
+@media (max-height: 650px) { .intro { top: 27%; } .intro-copy { margin-bottom: var(--space-lg); } .examples { margin-top: var(--space-lg); } .boundary-note { margin-top: var(--space-md); } }
+@media (max-width: 360px) { .intro-actions { flex-wrap: wrap; } }

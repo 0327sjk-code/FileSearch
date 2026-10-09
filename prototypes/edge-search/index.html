@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- 文件用途：文件搜索的悬浮入口交互原型模板；由 build.mjs 打包为离线 HTML。 -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+  <title>文件搜索 · 悬浮搜索体验</title>
+  <link rel="icon" href="{{FAVICON}}">
+  <style>{{STYLES}}</style>
+</head>
+<body data-mode="tray">
+  {{ICONS}}
+  <main class="desktop" aria-label="屏幕一的桌面效果演示">
+    <header class="preview-header">
+      <div class="brand"><svg class="app-icon" aria-hidden="true"><use href="#icon-app"></use></svg><span>文件搜索</span><span class="preview-label">悬浮搜索体验</span></div>
+      <span class="prototype-note">HTML 原型 · 示例文件</span>
+    </header>
+
+    <section class="intro" aria-labelledby="intro-title">
+      <p class="intro-status"><span class="status-dot"></span><span id="mode-label">已收纳到托盘</span></p>
+      <h1 id="intro-title">需要时，移过来。</h1>
+      <p class="intro-copy">悬停展开搜索，移走鼠标立即收起。<br>拖动小图标或搜索栏把手，可停靠四边。</p>
+      <div class="intro-actions">
+        <button class="button button-primary" id="try-search" type="button">展开便捷搜索<svg class="icon" aria-hidden="true"><use href="#icon-arrow"></use></svg></button>
+        <button class="button button-desktop" id="show-main" type="button">显示主窗口</button>
+      </div>
+      <div class="examples"><span>试搜</span><button data-example="水面" type="button">水面</button><button data-example="鱼" type="button">鱼</button><button data-example="截图" type="button">截图</button></div>
+      <p class="boundary-note">搜索、托盘与文件定位均为效果演示。</p>
+    </section>
+
+    <div class="edge-guide" id="edge-guide" aria-hidden="true"><span>悬停搜索 · 拖动换边</span></div>
+    <div class="dock-target" id="dock-target" aria-hidden="true"><span id="dock-target-label"></span></div>
+    <section class="edge-dock" id="edge-dock" data-edge="right" aria-label="可拖动的便捷搜索入口">
+      <div class="island-surface" id="island-surface">
+        <section class="edge-panel" id="edge-panel" aria-label="便捷文件搜索" aria-hidden="true" inert><div id="edge-search" class="search-view search-view-edge"></div></section>
+      </div>
+      <button class="edge-trigger" id="edge-trigger" type="button" aria-label="展开便捷搜索，拖动或 Alt 加方向键可停靠四边" aria-expanded="false" aria-controls="edge-panel" title="悬停搜索；拖动换边；Alt + 方向键也可换边">
+        <span class="trigger-surface"></span><svg class="icon peek-icon" aria-hidden="true"><use href="#icon-search"></use></svg><svg class="icon peek-grip" aria-hidden="true"><use href="#icon-grip"></use></svg>
+      </button>
+    </section>
+
+    <section class="main-window" id="main-window" aria-label="文件搜索主窗口演示" aria-hidden="true" inert>
+      <header class="window-titlebar"><span class="window-brand"><svg class="app-icon" aria-hidden="true"><use href="#icon-app"></use></svg>文件搜索<span class="window-demo-label">主窗口演示</span></span><button class="icon-button minimize-button" id="minimize-main" type="button" aria-label="最小化到托盘" title="最小化到托盘"><svg class="icon" aria-hidden="true"><use href="#icon-minus"></use></svg></button></header>
+      <div class="main-content"><h2>找文件，从名字开始。</h2><div id="main-search" class="search-view search-view-main"></div></div>
+    </section>
+
+    <footer class="taskbar" aria-label="任务栏与托盘演示">
+      <span class="taskbar-label">屏幕一 · 桌面效果预览</span>
+      <div class="tray-area"><span class="tray-label">托盘演示</span><button class="tray-button" id="tray-button" type="button" aria-label="文件搜索托盘菜单，双击恢复主窗口" aria-expanded="false" aria-controls="tray-menu" title="文件搜索 · 双击恢复主窗口"><svg class="app-icon" aria-hidden="true"><use href="#icon-app"></use></svg></button><div class="tray-menu" id="tray-menu" hidden><span class="tray-menu-title">文件搜索</span><button type="button" id="tray-restore"><svg class="icon" aria-hidden="true"><use href="#icon-expand"></use></svg>打开主窗口</button><button type="button" id="tray-search"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>便捷搜索</button></div></div>
+    </footer>
+  </main>
+
+  <dialog class="locator" id="locator" aria-labelledby="locator-title">
+    <header class="locator-header"><span><svg class="icon" aria-hidden="true"><use href="#icon-folder"></use></svg><strong id="locator-title">文件夹预览</strong><span class="locator-demo-label">定位演示</span></span><button class="icon-button" id="locator-close" type="button" aria-label="关闭文件夹预览" title="关闭"><svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg></button></header>
+    <p class="locator-path" id="locator-path"></p>
+    <div class="locator-columns"><span>名称</span><span>大小</span></div>
+    <ul class="locator-files" id="locator-files" aria-label="示例文件夹中的文件"></ul>
+    <footer class="locator-footer"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><span>已在示例文件夹中选中文件</span></footer>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript><p class="noscript">请在支持 JavaScript 的浏览器中打开此交互原型。</p></noscript>
+  <script type="module">{{SCRIPT}}</script>
+</body>
+</html>

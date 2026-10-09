@@ -16,9 +16,12 @@
      <Image Source="/文件搜索;component/Assets/FileSearch.png" Width="36" Height="36" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality" />
      <TextBlock Text="文件搜索" FontSize="23" FontWeight="SemiBold" VerticalAlignment="Center" />
     </StackPanel>
-    <Button x:Name="SettingsButton" Grid.Column="1" Command="{Binding SettingsCommand}" ToolTip="选择默认搜索的内置硬盘" AutomationProperties.Name="硬盘设置">
+    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+     <Button x:Name="CheckUpdateButton" Command="{Binding Updates.CheckCommand}" Content="{Binding Updates.ButtonText, TargetNullValue=检查更新}" ToolTip="{Binding Updates.Hint}" Style="{StaticResource QuietButton}" Margin="0,0,12,0" MinWidth="100" AutomationProperties.Name="检查更新" />
+    <Button x:Name="SettingsButton" Command="{Binding SettingsCommand}" ToolTip="选择默认搜索的内置硬盘" AutomationProperties.Name="硬盘设置">
      <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0" VerticalAlignment="Center" /><TextBlock Text="硬盘设置" /></StackPanel>
     </Button>
+    </StackPanel>
    </Grid>
    <Border x:Name="SearchBorder" CornerRadius="10" BorderThickness="1" Background="{StaticResource Background}" Padding="18,13">
     <Border.Style><Style TargetType="Border"><Setter Property="BorderBrush" Value="{StaticResource Line}" /><Style.Triggers>
@@ -125,7 +128,7 @@
   </Grid>
   <Border Grid.Row="2" Margin="0,16,0,0" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
    <Grid Margin="28,11,28,13">
-    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
     <TextBlock Text="{Binding SelectionText}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource Muted}" ToolTip="{Binding SelectionText}" Margin="0,0,20,9" />
     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,9"><TextBlock Text="{Binding Scope}" FontSize="11" Foreground="{StaticResource Muted}" /><TextBlock Text="  ·  仅本机" FontSize="11" Foreground="{StaticResource Muted}" /></StackPanel>
@@ -135,6 +138,7 @@
      <Button Command="{Binding RescanCommand}" Content="重新扫描" Style="{StaticResource QuietButton}" Padding="8,0" MinHeight="20" FontSize="11" Margin="8,0,0,0" />
     </StackPanel>
     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding IndexCount}" Foreground="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" />
+    <TextBlock x:Name="UpdateStatusText" Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Updates.Status}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" Visibility="{Binding Updates.HasStatus, Converter={StaticResource BoolVisibility}, FallbackValue=Collapsed}" />
    </Grid>
   </Border>
   <Border Grid.RowSpan="3" Panel.ZIndex="1" Background="{StaticResource Ink}" Opacity="0.12" Visibility="{Binding SettingsOpen, Converter={StaticResource BoolVisibility}}" MouseDown="BackdropMouseDown" />

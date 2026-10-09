@@ -102,6 +102,12 @@ internal sealed partial class CheckSuite
         Render(window, Path.Combine(output, "compact.png"), 840, 510);
         vm.Query = "不存在的文件名"; await vm.SearchNowAsync();
         Check("空状态可见", vm.Empty && vm.Results.Count == 0);
+        IReadOnlyDictionary<string, bool> floating = await QuickSearchDiagnostics.RunAsync(vm, Path.Combine(output, "floating"), () => gateway.SelectCalls);
+        foreach ((string name, bool passed) in floating) Check("原生浮栏: " + name, passed);
+        IReadOnlyDictionary<string, bool> locateRegression = await QuickLocateDiagnostics.RunAsync(vm, indexService.Snapshot, Path.Combine(output, "locate"), () => gateway.SelectCalls);
+        foreach ((string name, bool passed) in locateRegression) Check("定位滚动回归: " + name, passed);
+        IReadOnlyDictionary<string, bool> collapseRegression = await QuickCollapseDiagnostics.RunAsync(vm, Path.Combine(output, "collapse"));
+        foreach ((string name, bool passed) in collapseRegression) Check("收起边界回归: " + name, passed);
         Render(window, Path.Combine(output, "empty.png"), 1140, 748);
         vm.SettingsCommand.Execute(null);
         vm.DriveChoices.Clear();
