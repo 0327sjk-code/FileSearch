@@ -5,6 +5,7 @@ public static class UpdateProduct
 {
     public const string Repository = "0327sjk-code/FileSearch";
     public const string ExecutableName = "文件搜索.exe";
+    public const string ReleaseAssetName = "FileSearch.exe";
     public const string ProductName = "文件搜索";
     public const string CompanyName = "FlashFind";
     public const long MaximumExecutableBytes = 256L * 1024 * 1024;
@@ -23,5 +24,5 @@ public static class UpdateProduct
         return Normalize(result);
     }
 
-    public static Uri ExecutableUri(string version) => new($"https://github.com/{Repository}/releases/download/v{version}/{Uri.EscapeDataString(ExecutableName)}");
+    public static Uri ExecutableUri(string version) => new($"https://github.com/{Repository}/releases/download/v{version}/{ReleaseAssetName}");
 }

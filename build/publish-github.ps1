@@ -18,7 +18,8 @@ try {
     $productSource = [IO.File]::ReadAllText((Join-Path $projectRoot 'src\FlashFind.Core\Updating\UpdateProduct.cs'))
     $repository = [regex]::Match($productSource, 'Repository = "([^"]+)"').Groups[1].Value
     $executableName = [regex]::Match($productSource, 'ExecutableName = "([^"]+)"').Groups[1].Value
-    if ($version -notmatch '^\d+\.\d+\.\d+$' -or -not $repository -or -not $executableName) { throw '产品发布配置无效。' }
+    $assetName = [regex]::Match($productSource, 'ReleaseAssetName = "([^"]+)"').Groups[1].Value
+    if ($version -notmatch '^\d+\.\d+\.\d+$' -or -not $repository -or -not $executableName -or $assetName -notmatch '^[A-Za-z0-9._-]+\.exe$') { throw '产品发布配置无效。' }
     $tag = 'v' + $version
     $package = Join-Path $outputRoot 'package'
     $project = Join-Path $projectRoot 'src\FlashFind.Desktop\FlashFind.Desktop.csproj'
@@ -39,12 +40,12 @@ try {
     if (-not $?) { throw '后台替换与重启回归失败。' }
     $assets = Join-Path $outputRoot 'assets'
     [IO.Directory]::CreateDirectory($assets) | Out-Null
-    Copy-Item -LiteralPath $program -Destination (Join-Path $assets $executableName)
+    Copy-Item -LiteralPath $program -Destination (Join-Path $assets $assetName)
     $digest = (Get-FileHash -LiteralPath $program -Algorithm SHA256).Hash.ToLowerInvariant()
     $encoding = [Text.UTF8Encoding]::new($false)
     [IO.File]::WriteAllText((Join-Path $assets 'version.txt'), $version + "`n", $encoding)
-    [IO.File]::WriteAllText((Join-Path $assets ($executableName + '.sha256')), $digest + '  ' + $executableName + "`n", $encoding)
-    $manifest = [ordered]@{ version = $version; executableUrl = "https://github.com/$repository/releases/download/$tag/$([Uri]::EscapeDataString($executableName))"; sha256 = $digest; size = (Get-Item -LiteralPath $program).Length }
+    [IO.File]::WriteAllText((Join-Path $assets ($assetName + '.sha256')), $digest + '  ' + $assetName + "`n", $encoding)
+    $manifest = [ordered]@{ version = $version; executableUrl = "https://github.com/$repository/releases/download/$tag/$assetName"; sha256 = $digest; size = (Get-Item -LiteralPath $program).Length }
     [IO.File]::WriteAllText((Join-Path $assets 'update.json'), ($manifest | ConvertTo-Json), $encoding)
     $notesPath = Join-Path $outputRoot 'release-body.txt'
     [IO.File]::WriteAllText($notesPath, $Notes, $encoding)
@@ -58,11 +59,12 @@ try {
         if ($LASTEXITCODE -ne 0) { throw '创建标签失败。' }
         & git push origin $branch $tag
         if ($LASTEXITCODE -ne 0) { throw '推送源码与标签失败。' }
-        & gh release create $tag --repo $repository --draft --verify-tag --title "文件搜索 $version" --notes-file $notesPath (Join-Path $assets $executableName) (Join-Path $assets 'version.txt') (Join-Path $assets ($executableName + '.sha256')) (Join-Path $assets 'update.json')
+        & gh release create $tag --repo $repository --draft --verify-tag --title "文件搜索 $version" --notes-file $notesPath (Join-Path $assets $assetName) (Join-Path $assets 'version.txt') (Join-Path $assets ($assetName + '.sha256')) (Join-Path $assets 'update.json')
         if ($LASTEXITCODE -ne 0) { throw '上传草稿 Release 失败，尚未发布更新。' }
-        $release = & gh api "repos/$repository/releases/tags/$tag" | ConvertFrom-Json
-        if ($LASTEXITCODE -ne 0 -or @($release.assets).Count -ne 4) { throw '发布资产不完整，保留草稿。' }
-        $uploaded = $release.assets | Where-Object name -eq $executableName
+        $releases = & gh api "repos/$repository/releases" | ConvertFrom-Json
+        $release = @($releases | Where-Object { $_.tag_name -eq $tag -and $_.draft })
+        if ($LASTEXITCODE -ne 0 -or $release.Count -ne 1 -or @($release[0].assets).Count -ne 4) { throw '发布资产不完整，保留草稿。' }
+        $uploaded = $release[0].assets | Where-Object name -eq $assetName
         if ($uploaded.size -ne $manifest.size -or $uploaded.digest -ne ('sha256:' + $digest)) { throw 'GitHub 资产大小或哈希不一致，保留草稿。' }
         & gh release edit $tag --repo $repository --draft=false --latest
         if ($LASTEXITCODE -ne 0) { throw '公开发布失败。' }

@@ -8,7 +8,8 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath($OutputDirectory)
 $productSource = [IO.File]::ReadAllText((Join-Path (Split-Path -Parent $PSScriptRoot) 'src\FlashFind.Core\Updating\UpdateProduct.cs'))
 $repository = [regex]::Match($productSource, 'Repository = "([^"]+)"').Groups[1].Value
-if (-not $repository) { throw '发布仓库配置不存在。' }
+$assetName = [regex]::Match($productSource, 'ReleaseAssetName = "([^"]+)"').Groups[1].Value
+if (-not $repository -or -not $assetName) { throw '发布仓库配置不存在。' }
 [IO.Directory]::CreateDirectory($root) | Out-Null
 $newVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($NewProgram)
 $oldVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($OldProgram)
@@ -63,7 +64,7 @@ foreach ($case in @(@{ InTray = $false; FailHealth = $false }, @{ InTray = $true
             ParentId = $parentInfo.Id; ParentStartUtcTicks = $parentInfo.StartUtcTicks; Target = $target
             Root = $updatesRoot; Stage = $stage; Diagnostic = $true
             HealthEvent = 'Local\FlashFind.Update.' + [Guid]::NewGuid().ToString('N')
-            Release = @{ Version = $releaseVersion; ExecutableUrl = "https://github.com/$repository/releases/download/v$releaseVersion/%E6%96%87%E4%BB%B6%E6%90%9C%E7%B4%A2.exe"; Sha256 = $newHash; Size = (Get-Item -LiteralPath $NewProgram).Length }
+            Release = @{ Version = $releaseVersion; ExecutableUrl = "https://github.com/$repository/releases/download/v$releaseVersion/$assetName"; Sha256 = $newHash; Size = (Get-Item -LiteralPath $NewProgram).Length }
             Resume = @{ InTray = $inTray; Query = '中文 搜索 [1] & 文件'; Category = 'Image'; DriveRoot = 'D:\' }
         }
         Save-DiagnosticJson $planPath $plan
